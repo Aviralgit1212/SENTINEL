@@ -30,7 +30,13 @@ export default function DashboardPage() {
       </header>
 
       <UploadPanel
-        onSelected={(file) => navigate('/scan', { state: { fileName: file.name } })}
+        onSelected={(file) =>
+          navigate('/scan', {
+            state: {
+              file,
+            },
+          })
+        }
       />
 
       <RecentScans

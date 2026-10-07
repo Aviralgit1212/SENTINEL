@@ -64,8 +64,8 @@ export default function UploadPanel({ onSelected }: Props) {
       </button>
 
       <p className="upload-note">
-        Selecting a file doesn’t run a scan yet. The inspection service isn’t
-        connected.
+        Files are analyzed locally for type mismatches,
+        fingerprints, and available security signals.
       </p>
     </section>
   )

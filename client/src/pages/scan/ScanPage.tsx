@@ -1,29 +1,252 @@
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import './ScanPage.css'
+
+interface ScanResult {
+  scanId: string
+  filename: string
+  size: number
+  status: string
+  fileType: {
+    detectedExtension: string | null
+    detectedMime: string | null
+    detectedType: string | null
+    extensionMismatch: boolean
+  }
+  hash: {
+    algorithm: string
+    value: string
+  }
+  antivirus: {
+    engine: string
+    available: boolean
+    status: string
+    details: string
+  }
+  evidence: {
+    id: string
+    category: string
+    title: string
+    description: string
+    severity: string
+    source: string
+  }[]
+  risk: string
+  recommendation: string
+}
 
 export default function ScanPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const fileName =
-    typeof location.state?.fileName === 'string' ? location.state.fileName : null
+  const file =
+    location.state?.file instanceof File
+      ? location.state.file
+      : null
+
+  const [result, setResult] =
+    useState<ScanResult | null>(null)
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!file) return
+
+    let cancelled = false
+
+    async function runScan() {
+      setLoading(true)
+      setError(null)
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      try {
+        const response = await fetch(
+          'http://localhost:5001/api/scans',
+          {
+            method: 'POST',
+            body: formData,
+          },
+        )
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ?? 'Scan failed.',
+          )
+        }
+
+        if (!cancelled) {
+          setResult(data)
+        }
+      } catch (scanError) {
+        if (!cancelled) {
+          setError(
+            scanError instanceof Error
+              ? scanError.message
+              : 'Unable to scan the file.',
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void runScan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [file])
+
+  if (!file) {
+    return (
+      <main className="page scan-page">
+        <h1>No file selected</h1>
+
+        <p>
+          Return to the dashboard and choose a file
+          to scan.
+        </p>
+
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => navigate('/dashboard')}
+        >
+          Back to dashboard
+        </button>
+      </main>
+    )
+  }
+
+  if (loading) {
+    return (
+      <main className="page scan-page">
+        <h1>Analyzing file</h1>
+
+        <p>
+          SENTINEL is inspecting{' '}
+          <strong>{file.name}</strong>.
+        </p>
+
+        <p>
+          Checking file type, SHA-256 fingerprint,
+          and antivirus signals...
+        </p>
+      </main>
+    )
+  }
+
+  if (error) {
+    return (
+      <main className="page scan-page">
+        <h1>Scan failed</h1>
+
+        <p>{error}</p>
+
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => navigate('/dashboard')}
+        >
+          Back to dashboard
+        </button>
+      </main>
+    )
+  }
+
+  if (!result) return null
 
   return (
     <main className="page scan-page">
-      <h1>Inspection isn’t connected yet</h1>
+      <h1>Scan complete</h1>
 
       <p>
-        {fileName ? (
-          <>
-            Sentinel received <code>{fileName}</code> but did not upload or
-            analyse it.
-          </>
-        ) : (
-          'No file was selected.'
-        )}{' '}
-        This screen can show a verdict once the inspection API is connected.
+        <strong>{result.filename}</strong>
       </p>
+
+      <section>
+        <h2>Risk</h2>
+
+        <p>
+          <strong>{result.risk.toUpperCase()}</strong>
+        </p>
+
+        <p>
+          Recommendation:{' '}
+          <strong>
+            {result.recommendation.toUpperCase()}
+          </strong>
+        </p>
+      </section>
+
+      <section>
+        <h2>File verification</h2>
+
+        <p>
+          Detected type:{' '}
+          {result.fileType.detectedType ?? 'Unknown'}
+        </p>
+
+        <p>
+          MIME:{' '}
+          {result.fileType.detectedMime ?? 'Unknown'}
+        </p>
+
+        <p>
+          Extension mismatch:{' '}
+          {result.fileType.extensionMismatch
+            ? 'Yes'
+            : 'No'}
+        </p>
+      </section>
+
+      <section>
+        <h2>SHA-256</h2>
+
+        <code>{result.hash.value}</code>
+      </section>
+
+      <section>
+        <h2>Antivirus</h2>
+
+        <p>
+          {result.antivirus.available
+            ? result.antivirus.status
+            : 'Unavailable'}
+        </p>
+
+        <p>{result.antivirus.details}</p>
+      </section>
+
+      <section>
+        <h2>Evidence</h2>
+
+        {result.evidence.length === 0 ? (
+          <p>
+            No security findings were generated by
+            the current analyzers.
+          </p>
+        ) : (
+          <ul>
+            {result.evidence.map((item) => (
+              <li key={item.id}>
+                <strong>
+                  {item.title}
+                </strong>{' '}
+                — {item.description}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <button
         type="button"
