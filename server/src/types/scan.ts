@@ -66,5 +66,9 @@ export interface PdfAnalysis {
     formFieldCount: number
     hasOpenAction: boolean
     hasLaunchAction: boolean
+    hasAdditionalActions: boolean
+    hasRichMedia: boolean
+    hasAcroForm: boolean
+    hasXfa: boolean
     extractedTextLength: number
 }
