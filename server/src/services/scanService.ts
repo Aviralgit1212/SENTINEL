@@ -132,41 +132,53 @@ export async function analyzeFile(
 
         // PDF deep-analysis result
         pdfAnalysis: pdfAnalysis
-            ? {
-                  supported:
-                      pdfAnalysis.supported,
+    ? {
+          supported:
+              pdfAnalysis.supported,
 
-                  metadata:
-                      pdfAnalysis.metadata,
+          metadata:
+              pdfAnalysis.metadata,
 
-                  pageCount:
-                      pdfAnalysis.pageCount,
+          pageCount:
+              pdfAnalysis.pageCount,
 
-                  urls:
-                      pdfAnalysis.urls,
+          urls:
+              pdfAnalysis.urls,
 
-                  javascriptCount:
-                      pdfAnalysis.javascriptCount,
+          javascriptCount:
+              pdfAnalysis.javascriptCount,
 
-                  embeddedFileCount:
-                      pdfAnalysis.embeddedFileCount,
+          embeddedFileCount:
+              pdfAnalysis.embeddedFileCount,
 
-                  annotationCount:
-                      pdfAnalysis.annotationCount,
+          annotationCount:
+              pdfAnalysis.annotationCount,
 
-                  formFieldCount:
-                      pdfAnalysis.formFieldCount,
+          formFieldCount:
+              pdfAnalysis.formFieldCount,
 
-                  hasOpenAction:
-                      pdfAnalysis.hasOpenAction,
+          hasOpenAction:
+              pdfAnalysis.hasOpenAction,
 
-                  hasLaunchAction:
-                      pdfAnalysis.hasLaunchAction,
+          hasLaunchAction:
+              pdfAnalysis.hasLaunchAction,
 
-                  extractedTextLength:
-                      pdfAnalysis.extractedTextLength,
-              }
-            : undefined,
+          hasAdditionalActions:
+              pdfAnalysis.hasAdditionalActions,
+
+          hasRichMedia:
+              pdfAnalysis.hasRichMedia,
+
+          hasAcroForm:
+              pdfAnalysis.hasAcroForm,
+
+          hasXfa:
+              pdfAnalysis.hasXfa,
+
+          extractedTextLength:
+              pdfAnalysis.extractedTextLength,
+      }
+    : undefined,
 
         evidence,
 
