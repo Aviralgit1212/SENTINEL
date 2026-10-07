@@ -1,58 +1,85 @@
 import type { Evidence, RiskLevel } from '../types/scan.js'
 
-let evidenceCounter = 0
+interface CreateEvidenceInput {
+    category: Evidence['category']
+    title: string
+    description: string
+    severity: RiskLevel
+    source: string
+    score?: number
+}
 
 export function createEvidence(
-  input: Omit<Evidence, 'id'>,
+    input: CreateEvidenceInput,
 ): Evidence {
-  evidenceCounter += 1
+    return {
+        id: crypto.randomUUID(),
+        category: input.category,
+        title: input.title,
+        description: input.description,
+        severity: input.severity,
+        source: input.source,
+        score: input.score ?? severityToScore(input.severity),
+    }
+}
 
-  return {
-    id: `E${String(evidenceCounter).padStart(3, '0')}`,
-    ...input,
-  }
+function severityToScore(
+    severity: RiskLevel,
+): number {
+    switch (severity) {
+        case 'low':
+            return 2
+
+        case 'medium':
+            return 5
+
+        case 'high':
+            return 15
+
+        case 'critical':
+            return 50
+    }
 }
 
 export function calculateRisk(
-  evidence: Evidence[],
+    evidence: Evidence[],
+): number {
+    const total = evidence.reduce(
+        (sum, item) => sum + item.score,
+        0,
+    )
+
+    return Math.min(total, 100)
+}
+
+export function riskLevelFromScore(
+    score: number,
 ): RiskLevel {
-  if (
-    evidence.some(
-      (item) => item.severity === 'critical',
-    )
-  ) {
-    return 'critical'
-  }
+    if (score >= 75) {
+        return 'critical'
+    }
 
-  if (
-    evidence.some(
-      (item) => item.severity === 'high',
-    )
-  ) {
-    return 'high'
-  }
+    if (score >= 50) {
+        return 'high'
+    }
 
-  if (
-    evidence.some(
-      (item) => item.severity === 'medium',
-    )
-  ) {
-    return 'medium'
-  }
+    if (score >= 25) {
+        return 'medium'
+    }
 
-  return 'low'
+    return 'low'
 }
 
 export function recommendationForRisk(
-  risk: RiskLevel,
+    score: number,
 ): 'allow' | 'review' | 'block' {
-  if (risk === 'critical' || risk === 'high') {
-    return 'block'
-  }
+    if (score >= 50) {
+        return 'block'
+    }
 
-  if (risk === 'medium') {
-    return 'review'
-  }
+    if (score >= 25) {
+        return 'review'
+    }
 
-  return 'allow'
+    return 'allow'
 }

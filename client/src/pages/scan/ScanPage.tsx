@@ -8,22 +8,26 @@ interface ScanResult {
   filename: string
   size: number
   status: string
+
   fileType: {
     detectedExtension: string | null
     detectedMime: string | null
     detectedType: string | null
     extensionMismatch: boolean
   }
+
   hash: {
     algorithm: string
     value: string
   }
+
   antivirus: {
     engine: string
     available: boolean
     status: string
     details: string
   }
+
   evidence: {
     id: string
     category: string
@@ -31,9 +35,22 @@ interface ScanResult {
     description: string
     severity: string
     source: string
+    score: number
   }[]
-  risk: string
-  recommendation: string
+
+  risk: {
+    score: number
+    level:
+      | 'low'
+      | 'medium'
+      | 'high'
+      | 'critical'
+  }
+
+  recommendation:
+    | 'allow'
+    | 'review'
+    | 'block'
 }
 
 export default function ScanPage() {
@@ -48,8 +65,11 @@ export default function ScanPage() {
   const [result, setResult] =
     useState<ScanResult | null>(null)
 
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] =
+    useState(false)
+
+  const [error, setError] =
+    useState<string | null>(null)
 
   useEffect(() => {
     if (!file) return
@@ -61,7 +81,11 @@ export default function ScanPage() {
       setError(null)
 
       const formData = new FormData()
-      formData.append('file', file)
+
+      formData.append(
+        'file',
+        file,
+      )
 
       try {
         const response = await fetch(
@@ -72,11 +96,13 @@ export default function ScanPage() {
           },
         )
 
-        const data = await response.json()
+        const data =
+          await response.json()
 
         if (!response.ok) {
           throw new Error(
-            data.error ?? 'Scan failed.',
+            data.error ??
+              'Scan failed.',
           )
         }
 
@@ -105,26 +131,36 @@ export default function ScanPage() {
     }
   }, [file])
 
+  // --------------------------------
+  // No file selected
+  // --------------------------------
+
   if (!file) {
     return (
       <main className="page scan-page">
         <h1>No file selected</h1>
 
         <p>
-          Return to the dashboard and choose a file
-          to scan.
+          Return to the dashboard and choose
+          a file to scan.
         </p>
 
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => navigate('/dashboard')}
+          onClick={() =>
+            navigate('/dashboard')
+          }
         >
           Back to dashboard
         </button>
       </main>
     )
   }
+
+  // --------------------------------
+  // Loading
+  // --------------------------------
 
   if (loading) {
     return (
@@ -133,16 +169,23 @@ export default function ScanPage() {
 
         <p>
           SENTINEL is inspecting{' '}
-          <strong>{file.name}</strong>.
+          <strong>
+            {file.name}
+          </strong>.
         </p>
 
         <p>
-          Checking file type, SHA-256 fingerprint,
+          Checking file type,
+          SHA-256 fingerprint,
           and antivirus signals...
         </p>
       </main>
     )
   }
+
+  // --------------------------------
+  // Error
+  // --------------------------------
 
   if (error) {
     return (
@@ -154,7 +197,9 @@ export default function ScanPage() {
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => navigate('/dashboard')}
+          onClick={() =>
+            navigate('/dashboard')
+          }
         >
           Back to dashboard
         </button>
@@ -169,14 +214,30 @@ export default function ScanPage() {
       <h1>Scan complete</h1>
 
       <p>
-        <strong>{result.filename}</strong>
+        <strong>
+          {result.filename}
+        </strong>
       </p>
+
+      {/* --------------------------------
+          Risk
+      -------------------------------- */}
 
       <section>
         <h2>Risk</h2>
 
         <p>
-          <strong>{result.risk.toUpperCase()}</strong>
+          Risk score:{' '}
+          <strong>
+            {result.risk.score}/100
+          </strong>
+        </p>
+
+        <p>
+          Risk level:{' '}
+          <strong>
+            {result.risk.level.toUpperCase()}
+          </strong>
         </p>
 
         <p>
@@ -187,17 +248,23 @@ export default function ScanPage() {
         </p>
       </section>
 
+      {/* --------------------------------
+          File verification
+      -------------------------------- */}
+
       <section>
         <h2>File verification</h2>
 
         <p>
           Detected type:{' '}
-          {result.fileType.detectedType ?? 'Unknown'}
+          {result.fileType.detectedType ??
+            'Unknown'}
         </p>
 
         <p>
           MIME:{' '}
-          {result.fileType.detectedMime ?? 'Unknown'}
+          {result.fileType.detectedMime ??
+            'Unknown'}
         </p>
 
         <p>
@@ -208,11 +275,21 @@ export default function ScanPage() {
         </p>
       </section>
 
+      {/* --------------------------------
+          SHA-256
+      -------------------------------- */}
+
       <section>
         <h2>SHA-256</h2>
 
-        <code>{result.hash.value}</code>
+        <code>
+          {result.hash.value}
+        </code>
       </section>
+
+      {/* --------------------------------
+          Antivirus
+      -------------------------------- */}
 
       <section>
         <h2>Antivirus</h2>
@@ -223,35 +300,50 @@ export default function ScanPage() {
             : 'Unavailable'}
         </p>
 
-        <p>{result.antivirus.details}</p>
+        <p>
+          {result.antivirus.details}
+        </p>
       </section>
+
+      {/* --------------------------------
+          Evidence
+      -------------------------------- */}
 
       <section>
         <h2>Evidence</h2>
 
         {result.evidence.length === 0 ? (
           <p>
-            No security findings were generated by
-            the current analyzers.
+            No security findings were
+            generated by the current
+            analyzers.
           </p>
         ) : (
           <ul>
-            {result.evidence.map((item) => (
-              <li key={item.id}>
-                <strong>
-                  {item.title}
-                </strong>{' '}
-                — {item.description}
-              </li>
-            ))}
+            {result.evidence.map(
+              (item) => (
+                <li key={item.id}>
+                  <strong>
+                    {item.title}
+                  </strong>{' '}
+                  — {item.description}
+                </li>
+              ),
+            )}
           </ul>
         )}
       </section>
 
+      {/* --------------------------------
+          Back
+      -------------------------------- */}
+
       <button
         type="button"
         className="btn btn-primary"
-        onClick={() => navigate('/dashboard')}
+        onClick={() =>
+          navigate('/dashboard')
+        }
       >
         Back to dashboard
       </button>
