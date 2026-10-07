@@ -1,0 +1,16 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  padding-block: var(--s7) var(--s8);
+}
+
+.dashboard-head h1 {
+  font-size: var(--text-xl);
+}
+
+.dashboard-head p {
+  max-width: 60ch;
+  margin-top: var(--s2);
+  color: var(--ink-2);
+}

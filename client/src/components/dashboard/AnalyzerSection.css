@@ -1,0 +1,31 @@
+.engines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.engines li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+
+.engines strong {
+  display: block;
+  font-weight: 500;
+}
+
+.engines li div span {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.engine-status {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}

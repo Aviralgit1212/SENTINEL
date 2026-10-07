@@ -1,0 +1,9 @@
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s5);
+  min-height: 100vh;
+  padding: var(--s7) var(--s4);
+}

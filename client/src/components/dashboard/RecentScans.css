@@ -1,0 +1,123 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s4);
+}
+
+.panel-head h2 {
+  font-size: var(--text-md);
+}
+
+.panel-head p {
+  margin-top: var(--s1);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.history {
+  width: min(640px, 100% - 2 * var(--s4));
+  max-height: calc(100vh - 2 * var(--s6));
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+.history::backdrop {
+  background: var(--backdrop);
+}
+
+.history-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s5);
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history-head h2 {
+  font-size: var(--text-lg);
+}
+
+.history-close {
+  width: 36px;
+  padding: 0;
+}
+
+.history-toolbar {
+  display: flex;
+  gap: var(--s2);
+}
+
+.history-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+}
+
+.history-search svg {
+  width: 16px;
+  height: 16px;
+}
+
+.history-search input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+}
+
+.history-search input:focus-visible {
+  outline: none;
+}
+
+.history-search:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.history-toolbar select {
+  height: 38px;
+  padding: 0 var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+}
+
+.history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s5) 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.history-foot {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
