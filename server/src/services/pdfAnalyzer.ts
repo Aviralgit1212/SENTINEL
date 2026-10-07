@@ -1,63 +1,116 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 
-import type { Evidence } from '../types/scan.js'
-import { createEvidence } from '../utils/evidence.js'
-
-interface SuspiciousPdfObject {
-    xref: number
-    type: string
-}
-
-interface PdfAnalysisResult {
-    supported: boolean
-    metadata: Record<string, string>
-    pageCount: number
-    urls: string[]
-    javascriptCount: number
-    embeddedFileCount: number
-    annotationCount: number
-    formFieldCount: number
-    hasOpenAction: boolean
-    hasLaunchAction: boolean
-    hasAdditionalActions: boolean
-    hasRichMedia: boolean
-    hasAcroForm: boolean
-    hasXfa: boolean
-    extractedTextLength: number
-    suspiciousObjects: SuspiciousPdfObject[]
-    evidence: Evidence[]
-}
+import type {
+    PdfFacts,
+    PdfOpenAction,
+    PdfSuspiciousObject,
+} from '../types/scan.js'
 
 interface PythonResult {
     ok: boolean
-    error?: string
 
     metadata?: Record<string, string>
+
     pageCount?: number
+
     urls?: string[]
+
     javascriptCount?: number
+
     embeddedFileCount?: number
+
     annotationCount?: number
+
     formFieldCount?: number
 
+    // --------------------------------
+    // OpenAction
+    // --------------------------------
+
+    openAction?: {
+        present?: boolean
+
+        type?:
+            | 'GoTo'
+            | 'GoToR'
+            | 'URI'
+            | 'JavaScript'
+            | 'Launch'
+            | 'Unknown'
+            | null
+
+        rawType?: string | null
+
+        target?: string | null
+    }
+
+    // --------------------------------
+    // Legacy / structure flags
+    // --------------------------------
+
     hasOpenAction?: boolean
+
     hasLaunchAction?: boolean
+
     hasAdditionalActions?: boolean
+
     hasRichMedia?: boolean
+
     hasAcroForm?: boolean
+
     hasXfa?: boolean
 
     extractedTextLength?: number
 
-    suspiciousObjects?: SuspiciousPdfObject[]
+    // --------------------------------
+    // OCR
+    // --------------------------------
+
+    ocrAttempted?: boolean
+
+    ocrAvailable?: boolean
+
+    ocrTextLength?: number
+
+    ocrPageCount?: number
+
+    ocrText?: string
+
+    textSource?: 'native' | 'ocr' | 'none'
+
+    // --------------------------------
+    // Suspicious PDF objects
+    // --------------------------------
+
+    suspiciousObjects?: PdfSuspiciousObject[]
+
+    error?: string
 }
 
+/**
+ * Runs the Python/PyMuPDF PDF analyzer
+ * and converts its output into normalized PDF facts.
+ *
+ * IMPORTANT:
+ *
+ * This service only extracts facts.
+ * It does NOT:
+ *
+ * - create security evidence
+ * - assign severity
+ * - assign risk scores
+ * - make allow/block decisions
+ */
 export function analyzePdf(
     filePath: string,
-): Promise<PdfAnalysisResult> {
+): Promise<PdfFacts> {
 
     return new Promise((resolve) => {
+
+        // --------------------------------
+        // Python analyzer path
+        // --------------------------------
 
         const scriptPath = path.resolve(
             process.cwd(),
@@ -66,6 +119,10 @@ export function analyzePdf(
             'analyze_pdf.py',
         )
 
+        // --------------------------------
+        // Python virtual environment
+        // --------------------------------
+
         const pythonPath = path.resolve(
             process.cwd(),
             '.venv',
@@ -73,9 +130,16 @@ export function analyzePdf(
             'python',
         )
 
+        // --------------------------------
+        // Start Python process
+        // --------------------------------
+
         const python = spawn(
             pythonPath,
-            [scriptPath, filePath],
+            [
+                scriptPath,
+                filePath,
+            ],
             {
                 stdio: [
                     'ignore',
@@ -86,28 +150,45 @@ export function analyzePdf(
         )
 
         let stdout = ''
+
         let stderr = ''
+
+        // --------------------------------
+        // Capture stdout
+        // --------------------------------
 
         python.stdout.on(
             'data',
             (chunk) => {
-                stdout += chunk.toString()
+
+                stdout +=
+                    chunk.toString()
             },
         )
+
+        // --------------------------------
+        // Capture stderr
+        // --------------------------------
 
         python.stderr.on(
             'data',
             (chunk) => {
-                stderr += chunk.toString()
+
+                stderr +=
+                    chunk.toString()
             },
         )
+
+        // --------------------------------
+        // Python process error
+        // --------------------------------
 
         python.on(
             'error',
             (error) => {
 
                 resolve(
-                    createFailedResult(
+                    createFailedFacts(
                         error.message ||
                             'Unable to start the PDF analyzer.',
                     ),
@@ -115,14 +196,22 @@ export function analyzePdf(
             },
         )
 
+        // --------------------------------
+        // Python process completed
+        // --------------------------------
+
         python.on(
             'close',
             (code) => {
 
+                // --------------------------------
+                // Non-zero exit code
+                // --------------------------------
+
                 if (code !== 0) {
 
                     resolve(
-                        createFailedResult(
+                        createFailedFacts(
                             stderr.trim() ||
                                 'The PDF analyzer exited with an error.',
                         ),
@@ -132,6 +221,10 @@ export function analyzePdf(
                 }
 
                 try {
+
+                    // --------------------------------
+                    // Find JSON object
+                    // --------------------------------
 
                     const jsonStart =
                         stdout.indexOf('{')
@@ -156,15 +249,23 @@ export function analyzePdf(
                             jsonEnd + 1,
                         )
 
+                    // --------------------------------
+                    // Parse Python result
+                    // --------------------------------
+
                     const parsed =
                         JSON.parse(
                             jsonOutput,
                         ) as PythonResult
 
+                    // --------------------------------
+                    // Python reported failure
+                    // --------------------------------
+
                     if (!parsed.ok) {
 
                         resolve(
-                            createFailedResult(
+                            createFailedFacts(
                                 parsed.error ||
                                     'Unknown PDF analysis error.',
                             ),
@@ -173,77 +274,127 @@ export function analyzePdf(
                         return
                     }
 
-                    const result: PdfAnalysisResult = {
+                    // --------------------------------
+                    // Normalize OpenAction
+                    // --------------------------------
 
-                        supported: true,
+                    const openAction =
+                        normalizeOpenAction(
+                            parsed,
+                        )
+
+                    // --------------------------------
+                    // Normalize PDF facts
+                    // --------------------------------
+
+                    const facts: PdfFacts = {
+
+                        supported:
+                            true,
 
                         metadata:
                             parsed.metadata ?? {},
 
-                        pageCount:
-                            parsed.pageCount ?? 0,
+                        // --------------------------------
+                        // PDF structure
+                        // --------------------------------
 
-                        urls:
-                            parsed.urls ?? [],
+                        structure: {
 
-                        javascriptCount:
-                            parsed.javascriptCount ?? 0,
+                            pageCount:
+                                parsed.pageCount ?? 0,
 
-                        embeddedFileCount:
-                            parsed.embeddedFileCount ?? 0,
+                            javascriptCount:
+                                parsed.javascriptCount ?? 0,
 
-                        annotationCount:
-                            parsed.annotationCount ?? 0,
+                            embeddedFileCount:
+                                parsed.embeddedFileCount ?? 0,
 
-                        formFieldCount:
-                            parsed.formFieldCount ?? 0,
+                            annotationCount:
+                                parsed.annotationCount ?? 0,
 
-                        hasOpenAction:
-                            parsed.hasOpenAction ??
-                            false,
+                            formFieldCount:
+                                parsed.formFieldCount ?? 0,
 
-                        hasLaunchAction:
-                            parsed.hasLaunchAction ??
-                            false,
+                            openAction,
 
-                        hasAdditionalActions:
-                            parsed.hasAdditionalActions ??
-                            false,
+                            hasLaunchAction:
+                                parsed.hasLaunchAction ??
+                                false,
 
-                        hasRichMedia:
-                            parsed.hasRichMedia ??
-                            false,
+                            hasAdditionalActions:
+                                parsed.hasAdditionalActions ??
+                                false,
 
-                        hasAcroForm:
-                            parsed.hasAcroForm ??
-                            false,
+                            hasRichMedia:
+                                parsed.hasRichMedia ??
+                                false,
 
-                        hasXfa:
-                            parsed.hasXfa ??
-                            false,
+                            hasAcroForm:
+                                parsed.hasAcroForm ??
+                                false,
 
-                        extractedTextLength:
-                            parsed.extractedTextLength ??
-                            0,
+                            hasXfa:
+                                parsed.hasXfa ??
+                                false,
+                        },
+
+                        // --------------------------------
+                        // Links
+                        // --------------------------------
+
+                        links: {
+
+                            urls:
+                                parsed.urls ?? [],
+                        },
+
+                        // --------------------------------
+                        // Text / OCR
+                        // --------------------------------
+
+                        text: {
+
+                            nativeTextLength:
+                                parsed.extractedTextLength ??
+                                0,
+
+                            ocrAttempted:
+                                parsed.ocrAttempted ??
+                                false,
+
+                            ocrAvailable:
+                                parsed.ocrAvailable ??
+                                false,
+
+                            ocrTextLength:
+                                parsed.ocrTextLength ??
+                                0,
+
+                            ocrPageCount:
+                                parsed.ocrPageCount ??
+                                0,
+
+                            source:
+                                parsed.textSource ??
+                                'none',
+                        },
+
+                        // --------------------------------
+                        // Suspicious objects
+                        // --------------------------------
 
                         suspiciousObjects:
                             parsed.suspiciousObjects ??
                             [],
-
-                        evidence: [],
                     }
 
-                    result.evidence =
-                        buildPdfEvidence(
-                            result,
-                        )
-
-                    resolve(result)
+                    resolve(facts)
 
                 } catch (error) {
 
                     resolve(
-                        createFailedResult(
+                        createFailedFacts(
                             error instanceof Error
                                 ? error.message
                                 : 'The PDF analyzer returned an unreadable result.',
@@ -255,346 +406,191 @@ export function analyzePdf(
     })
 }
 
-function createFailedResult(
-    description: string,
-): PdfAnalysisResult {
+/**
+ * Converts the Python OpenAction result into
+ * the normalized PdfOpenAction structure.
+ *
+ * We keep this conservative:
+ *
+ * - Missing action = no action
+ * - Unknown action = Unknown
+ * - No guessing about maliciousness
+ */
+function normalizeOpenAction(
+    parsed: PythonResult,
+): PdfOpenAction {
+
+    // --------------------------------
+    // New Python format
+    // --------------------------------
+
+    if (parsed.openAction) {
+
+        const action =
+            parsed.openAction
+
+        return {
+
+            present:
+                action.present ??
+                false,
+
+            type:
+                action.type ??
+                null,
+
+            rawType:
+                action.rawType ??
+                null,
+
+            target:
+                action.target ??
+                null,
+        }
+    }
+
+    // --------------------------------
+    // Backward compatibility
+    // --------------------------------
+    //
+    // If an older Python analyzer output is
+    // encountered, preserve the OpenAction fact.
+    //
+    // We cannot determine its exact behavior,
+    // therefore it is classified as Unknown.
+    // --------------------------------
+
+    if (parsed.hasOpenAction) {
+
+        return {
+
+            present:
+                true,
+
+            type:
+                'Unknown',
+
+            rawType:
+                null,
+
+            target:
+                null,
+        }
+    }
+
+    // --------------------------------
+    // No OpenAction
+    // --------------------------------
 
     return {
 
-        supported: false,
+        present:
+            false,
 
-        metadata: {},
+        type:
+            null,
 
-        pageCount: 0,
+        rawType:
+            null,
 
-        urls: [],
-
-        javascriptCount: 0,
-
-        embeddedFileCount: 0,
-
-        annotationCount: 0,
-
-        formFieldCount: 0,
-
-        hasOpenAction: false,
-
-        hasLaunchAction: false,
-
-        hasAdditionalActions: false,
-
-        hasRichMedia: false,
-
-        hasAcroForm: false,
-
-        hasXfa: false,
-
-        extractedTextLength: 0,
-
-        suspiciousObjects: [],
-
-        evidence: [
-            createEvidence({
-                category: 'pdf-analyzer',
-
-                title:
-                    'PDF analysis failed',
-
-                description,
-
-                severity: 'medium',
-
-                source: 'pymupdf',
-            }),
-        ],
+        target:
+            null,
     }
 }
 
-function buildPdfEvidence(
-    result: PdfAnalysisResult,
-): Evidence[] {
+/**
+ * Creates a safe failed PDF facts object.
+ *
+ * The failure is represented as facts so that the
+ * evidence layer can decide how to report it.
+ */
+function createFailedFacts(
+    description: string,
+): PdfFacts {
 
-    const evidence: Evidence[] = []
+    return {
 
-    // ---------------------------------------------------------
-    // JavaScript
-    // ---------------------------------------------------------
+        supported:
+            false,
 
-    if (
-        result.javascriptCount > 0
-    ) {
+        metadata: {
+            analysisError:
+                description,
+        },
 
-        evidence.push(
-            createEvidence({
-                category:
-                    'active-content',
+        structure: {
 
-                title:
-                    'JavaScript detected',
+            pageCount:
+                0,
 
-                description:
-                    `The PDF contains ${result.javascriptCount} JavaScript-related object(s).`,
+            javascriptCount:
+                0,
 
-                severity:
-                    'high',
+            embeddedFileCount:
+                0,
 
-                source:
-                    'pdf-analyzer',
-            }),
-        )
+            annotationCount:
+                0,
+
+            formFieldCount:
+                0,
+
+            openAction: {
+
+                present:
+                    false,
+
+                type:
+                    null,
+
+                rawType:
+                    null,
+
+                target:
+                    null,
+            },
+
+            hasLaunchAction:
+                false,
+
+            hasAdditionalActions:
+                false,
+
+            hasRichMedia:
+                false,
+
+            hasAcroForm:
+                false,
+
+            hasXfa:
+                false,
+        },
+
+        links: {
+            urls: [],
+        },
+
+        text: {
+
+            nativeTextLength:
+                0,
+
+            ocrAttempted:
+                false,
+
+            ocrAvailable:
+                false,
+
+            ocrTextLength:
+                0,
+
+            ocrPageCount:
+                0,
+
+            source:
+                'none',
+        },
+
+        suspiciousObjects: [],
     }
-
-    // ---------------------------------------------------------
-    // OpenAction
-    // ---------------------------------------------------------
-
-    if (
-        result.hasOpenAction
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'active-content',
-
-                title:
-                    'Automatic document action detected',
-
-                description:
-                    'The PDF contains an OpenAction that can trigger an action when the document is opened.',
-
-                severity:
-                    'medium',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // Additional Actions
-    // ---------------------------------------------------------
-
-    if (
-        result.hasAdditionalActions
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'active-content',
-
-                title:
-                    'Additional PDF actions detected',
-
-                description:
-                    'The PDF contains an Additional Actions (/AA) entry that may trigger actions from document events.',
-
-                severity:
-                    'medium',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // Launch
-    // ---------------------------------------------------------
-
-    if (
-        result.hasLaunchAction
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'active-content',
-
-                title:
-                    'Launch action detected',
-
-                description:
-                    'The PDF contains a Launch action capable of starting another resource or application.',
-
-                severity:
-                    'high',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // Embedded files
-    // ---------------------------------------------------------
-
-    if (
-        result.embeddedFileCount > 0
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'embedded-content',
-
-                title:
-                    'Embedded file detected',
-
-                description:
-                    `The PDF contains ${result.embeddedFileCount} embedded file(s).`,
-
-                severity:
-                    'medium',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // RichMedia
-    // ---------------------------------------------------------
-
-    if (
-        result.hasRichMedia
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'active-content',
-
-                title:
-                    'Rich media content detected',
-
-                description:
-                    'The PDF contains RichMedia content that may provide interactive or executable capabilities.',
-
-                severity:
-                    'medium',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // XFA
-    // ---------------------------------------------------------
-
-    if (
-        result.hasXfa
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'document-structure',
-
-                title:
-                    'XFA form structure detected',
-
-                description:
-                    'The PDF contains XFA form structures. These should be inspected as part of deeper document analysis.',
-
-                severity:
-                    'low',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // AcroForm
-    // ---------------------------------------------------------
-
-    if (
-        result.hasAcroForm
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'document-structure',
-
-                title:
-                    'AcroForm structure detected',
-
-                description:
-                    'The PDF contains an AcroForm structure.',
-
-                severity:
-                    'low',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // URLs
-    // ---------------------------------------------------------
-
-    if (
-        result.urls.length > 0
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'network',
-
-                title:
-                    'URLs detected',
-
-                description:
-                    `The PDF contains ${result.urls.length} URL(s) that can be inspected by later threat-intelligence analysis.`,
-
-                severity:
-                    'low',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    // ---------------------------------------------------------
-    // Form fields
-    // ---------------------------------------------------------
-
-    if (
-        result.formFieldCount > 0
-    ) {
-
-        evidence.push(
-            createEvidence({
-                category:
-                    'document-structure',
-
-                title:
-                    'Interactive form fields detected',
-
-                description:
-                    `The PDF contains ${result.formFieldCount} form field(s).`,
-
-                severity:
-                    'low',
-
-                source:
-                    'pdf-analyzer',
-            }),
-        )
-    }
-
-    return evidence
 }
