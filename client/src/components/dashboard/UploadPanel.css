@@ -1,0 +1,41 @@
+.upload {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--s3) var(--s5);
+  padding: var(--s6);
+  background: var(--surface);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+
+.upload[data-dragging='true'] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+
+.upload h2 {
+  margin-bottom: var(--s1);
+  font-size: var(--text-lg);
+}
+
+.upload p {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.upload .upload-note {
+  grid-column: 1 / -1;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 600px) {
+  .upload {
+    grid-template-columns: 1fr;
+    padding: var(--s5);
+  }
+}

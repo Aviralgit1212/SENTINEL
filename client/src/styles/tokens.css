@@ -1,0 +1,94 @@
+/*
+ * Design tokens.
+ * One accent, two radii, a 4px spacing scale and a fixed type scale.
+ * Components should read from these and never hardcode colours or sizes.
+ */
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f4f5f6;
+  --surface: #ffffff;
+  --sunken: #eceef0;
+
+  --ink: #16191d;
+  --ink-2: #4b535c;
+  --ink-3: #656d76;
+
+  --line: #dcdfe3;
+  --line-strong: #bcc2c9;
+
+  --accent: #0b6b57;
+  --accent-hover: #085544;
+  --accent-wash: #e3f1ed;
+  --on-accent: #ffffff;
+
+  --warn: #8f5200;
+  --warn-wash: #fbefdb;
+
+  --danger: #b3261e;
+  --danger-wash: #fbe9e7;
+  --on-danger: #ffffff;
+
+  --backdrop: rgb(22 25 29 / 45%);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #101312;
+  --surface: #171b1a;
+  --sunken: #0c0f0e;
+
+  --ink: #e8ecea;
+  --ink-2: #a9b3af;
+  --ink-3: #8a9692;
+
+  --line: #2a312f;
+  --line-strong: #3b4542;
+
+  --accent: #5cc4a6;
+  --accent-hover: #7ad4ba;
+  --accent-wash: #16312a;
+  --on-accent: #07120f;
+
+  --warn: #e3a54a;
+  --warn-wash: #33270f;
+
+  --danger: #f08a82;
+  --danger-wash: #3a1c19;
+  --on-danger: #1a0a09;
+
+  --backdrop: rgb(0 0 0 / 60%);
+}
+
+:root {
+  --font-sans: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Type scale */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: clamp(32px, 5vw, 48px);
+
+  /* Spacing scale (4px base) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 64px;
+
+  /* Radii: small for controls, medium for panels. Nothing else. */
+  --r-sm: 4px;
+  --r-md: 8px;
+
+  --page-width: 1080px;
+  --header-height: 56px;
+}
