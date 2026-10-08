@@ -11,11 +11,373 @@ MAX_OCR_PAGES = 10
 OCR_TIMEOUT_SECONDS = 15
 
 
+# =========================================================
+# Embedded-file helpers
+# =========================================================
+
+EXECUTABLE_EXTENSIONS = {
+    ".exe",
+    ".dll",
+    ".com",
+    ".scr",
+    ".msi",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".vbs",
+    ".vbe",
+    ".js",
+    ".jse",
+    ".wsf",
+    ".wsh",
+    ".hta",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".elf",
+    ".dmg",
+    ".app",
+}
+
+EXECUTABLE_MIME_TYPES = {
+    "application/x-msdownload",
+    "application/x-dosexec",
+    "application/vnd.microsoft.portable-executable",
+    "application/x-msdos-program",
+    "application/x-sh",
+    "application/x-shellscript",
+    "text/javascript",
+    "application/javascript",
+    "application/x-javascript",
+}
+
+C2PA_MARKERS = {
+    "c2pa",
+    "content credentials",
+    "content-credentials",
+}
+
+
+def extract_pdf_string(
+    object_text,
+    key,
+):
+    """
+    Extract a simple PDF string value such as:
+
+        /F (example.exe)
+
+    or:
+
+        /Subtype /application#2Fpdf
+    """
+
+    # Parenthesized PDF string
+    string_match = re.search(
+        rf"/{key}\s*\((.*?)\)",
+        object_text,
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    if string_match:
+        return string_match.group(1)
+
+    # PDF name value
+    name_match = re.search(
+        rf"/{key}\s*/([^\s<>\[\]()]+)",
+        object_text,
+        re.IGNORECASE,
+    )
+
+    if name_match:
+        value = name_match.group(1)
+
+        # Decode common PDF name escaping.
+        value = value.replace(
+            "#2F",
+            "/",
+        )
+
+        value = value.replace(
+            "#20",
+            " ",
+        )
+
+        value = value.replace(
+            "#23",
+            "#",
+        )
+
+        return value
+
+    # Hexadecimal string
+    hex_match = re.search(
+        rf"/{key}\s*<([0-9A-Fa-f]+)>",
+        object_text,
+        re.IGNORECASE,
+    )
+
+    if hex_match:
+        try:
+            return bytes.fromhex(
+                hex_match.group(1),
+            ).decode(
+                "utf-8",
+                errors="ignore",
+            )
+        except ValueError:
+            return None
+
+    return None
+
+
+def extract_pdf_name(
+    object_text,
+    key,
+):
+    """
+    Extract a PDF name such as:
+
+        /AFRelationship /Data
+    """
+
+    match = re.search(
+        rf"/{key}\s*/([^\s<>\[\]()]+)",
+        object_text,
+        re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    return match.group(1)
+
+
+def normalize_mime_type(
+    value,
+):
+    if not value:
+        return None
+
+    return (
+        value
+        .replace(
+            "#2F",
+            "/",
+        )
+        .replace(
+            "#20",
+            " ",
+        )
+        .strip()
+    )
+
+
+def is_c2pa_embedded_file(
+    filename,
+    mime_type,
+    object_text,
+):
+    """
+    Detect C2PA / Content Credentials.
+
+    This is classification only.
+    It does NOT assign a risk score.
+    """
+
+    values = [
+        filename or "",
+        mime_type or "",
+        object_text or "",
+    ]
+
+    combined = " ".join(
+        values,
+    ).lower()
+
+    return any(
+        marker in combined
+        for marker in C2PA_MARKERS
+    )
+
+
+def is_executable_like(
+    filename,
+    mime_type,
+):
+    """
+    Determine whether an embedded file looks
+    executable or script-like based on its filename
+    and MIME type.
+
+    This is deliberately conservative.
+    """
+
+    filename_lower = (
+        (filename or "")
+        .strip()
+        .lower()
+    )
+
+    mime_lower = (
+        (mime_type or "")
+        .strip()
+        .lower()
+    )
+
+    for extension in EXECUTABLE_EXTENSIONS:
+
+        if filename_lower.endswith(
+            extension,
+        ):
+            return True
+
+    if mime_lower in EXECUTABLE_MIME_TYPES:
+        return True
+
+    return False
+
+
+def extract_embedded_files(
+    document,
+):
+    """
+    Extract detailed information about actual
+    /EmbeddedFile streams.
+
+    We intentionally inspect objects containing
+    /EmbeddedFile rather than counting /Filespec
+    objects.
+
+    This prevents a FileSpec from automatically
+    being interpreted as an embedded payload.
+    """
+
+    embedded_files = []
+
+    xref_count = document.xref_length()
+
+    for xref in range(
+        1,
+        xref_count,
+    ):
+
+        try:
+
+            object_text = document.xref_object(
+                xref,
+                compressed=False,
+            )
+
+            if not object_text:
+                continue
+
+            lower = object_text.lower()
+
+            if "/embeddedfile" not in lower:
+                continue
+
+            # ---------------------------------------------
+            # Filename
+            # ---------------------------------------------
+
+            filename = (
+                extract_pdf_string(
+                    object_text,
+                    "F",
+                )
+                or extract_pdf_string(
+                    object_text,
+                    "UF",
+                )
+            )
+
+            # ---------------------------------------------
+            # MIME / subtype
+            # ---------------------------------------------
+
+            mime_type = normalize_mime_type(
+                extract_pdf_name(
+                    object_text,
+                    "Subtype",
+                )
+            )
+
+            # ---------------------------------------------
+            # Embedded-file relationship
+            # ---------------------------------------------
+
+            relationship = extract_pdf_name(
+                object_text,
+                "AFRelationship",
+            )
+
+            # ---------------------------------------------
+            # Embedded stream size
+            # ---------------------------------------------
+
+            size = None
+
+            length_match = re.search(
+                r"/Length\s+(\d+)",
+                object_text,
+                re.IGNORECASE,
+            )
+
+            if length_match:
+
+                try:
+                    size = int(
+                        length_match.group(1),
+                    )
+                except ValueError:
+                    size = None
+
+            # ---------------------------------------------
+            # C2PA detection
+            # ---------------------------------------------
+
+            is_c2pa = is_c2pa_embedded_file(
+                filename,
+                mime_type,
+                object_text,
+            )
+
+            # ---------------------------------------------
+            # Executable/script classification
+            # ---------------------------------------------
+
+            executable_like = is_executable_like(
+                filename,
+                mime_type,
+            )
+
+            embedded_files.append({
+                "filename": filename,
+                "mimeType": mime_type,
+                "size": size,
+                "relationship": relationship,
+                "isC2pa": is_c2pa,
+                "isExecutableLike": executable_like,
+                "xref": xref,
+            })
+
+        except Exception:
+            continue
+
+    return embedded_files
+
+
+# =========================================================
+# OCR
+# =========================================================
+
 def run_ocr(page):
     """
     Render one PDF page to PNG and send it directly to Tesseract.
     No temporary image file is created.
     """
+
     pixmap = page.get_pixmap(
         matrix=pymupdf.Matrix(2, 2),
         alpha=False,
@@ -43,6 +405,10 @@ def run_ocr(page):
         return ""
 
 
+# =========================================================
+# OpenAction
+# =========================================================
+
 def normalize_action_type(value):
     """
     Converts a PDF action type into a controlled value.
@@ -65,7 +431,10 @@ def normalize_action_type(value):
         "Named": "Unknown",
     }
 
-    return known_types.get(value, "Unknown")
+    return known_types.get(
+        value,
+        "Unknown",
+    )
 
 
 def extract_open_action(document):
@@ -93,6 +462,7 @@ def extract_open_action(document):
     }
 
     try:
+
         catalog_xref = document.pdf_catalog()
 
         if not catalog_xref:
@@ -117,7 +487,7 @@ def extract_open_action(document):
         )
 
         if not open_action_match:
-            # Some PDFs may store the action inline.
+
             inline_match = re.search(
                 r"/OpenAction\s*<<([\s\S]*?)>>",
                 catalog_object,
@@ -130,6 +500,7 @@ def extract_open_action(document):
             action_object = inline_match.group(1)
 
         else:
+
             action_xref = int(
                 open_action_match.group(1),
             )
@@ -140,8 +511,10 @@ def extract_open_action(document):
             )
 
             if not action_object:
+
                 result["present"] = True
                 result["type"] = "Unknown"
+
                 return result
 
         result["present"] = True
@@ -157,14 +530,17 @@ def extract_open_action(document):
         )
 
         if action_type_match:
+
             raw_type = action_type_match.group(1)
 
             result["rawType"] = raw_type
+
             result["type"] = normalize_action_type(
                 raw_type,
             )
 
         else:
+
             result["type"] = "Unknown"
 
         # ---------------------------------------------------------
@@ -180,9 +556,11 @@ def extract_open_action(document):
             )
 
             if uri_match:
+
                 result["target"] = uri_match.group(1)
 
             else:
+
                 uri_hex_match = re.search(
                     r"/URI\s*<([0-9A-Fa-f]+)>",
                     action_object,
@@ -190,13 +568,16 @@ def extract_open_action(document):
                 )
 
                 if uri_hex_match:
+
                     try:
+
                         result["target"] = bytes.fromhex(
                             uri_hex_match.group(1),
                         ).decode(
                             "utf-8",
                             errors="ignore",
                         )
+
                     except ValueError:
                         pass
 
@@ -220,6 +601,7 @@ def extract_open_action(document):
             )
 
             if javascript_match:
+
                 javascript_text = (
                     javascript_match.group(1)
                     or javascript_match.group(2)
@@ -227,18 +609,19 @@ def extract_open_action(document):
                 )
 
                 if javascript_match.group(2):
+
                     try:
+
                         javascript_text = bytes.fromhex(
                             javascript_text,
                         ).decode(
                             "utf-8",
                             errors="ignore",
                         )
+
                     except ValueError:
                         pass
 
-                # Do NOT expose the entire JavaScript payload.
-                # Only expose a bounded preview.
                 result["target"] = (
                     javascript_text[:200]
                     if javascript_text
@@ -260,9 +643,13 @@ def extract_open_action(document):
             )
 
             if file_match:
-                result["target"] = file_match.group(1)
+
+                result["target"] = (
+                    file_match.group(1)
+                )
 
             else:
+
                 result["target"] = (
                     "remote document destination"
                 )
@@ -273,15 +660,29 @@ def extract_open_action(document):
         return result
 
 
+# =========================================================
+# Main PDF analysis
+# =========================================================
+
 def analyze_pdf(path):
+
     result = {
         "ok": False,
+
         "metadata": {},
+
         "pageCount": 0,
+
         "urls": [],
+
         "javascriptCount": 0,
+
         "embeddedFileCount": 0,
+
+        "embeddedFiles": [],
+
         "annotationCount": 0,
+
         "formFieldCount": 0,
 
         # ---------------------------------------------------------
@@ -295,13 +696,16 @@ def analyze_pdf(path):
             "target": None,
         },
 
-        # Legacy compatibility field.
         "hasOpenAction": False,
 
         "hasLaunchAction": False,
+
         "hasAdditionalActions": False,
+
         "hasRichMedia": False,
+
         "hasAcroForm": False,
+
         "hasXfa": False,
 
         "extractedTextLength": 0,
@@ -313,15 +717,23 @@ def analyze_pdf(path):
         # ---------------------------------------------------------
 
         "ocrAttempted": False,
+
         "ocrAvailable": False,
+
         "ocrTextLength": 0,
+
         "ocrPageCount": 0,
+
         "ocrText": "",
+
         "textSource": "none",
     }
 
     try:
-        document = pymupdf.open(path)
+
+        document = pymupdf.open(
+            path,
+        )
 
         result["ok"] = True
 
@@ -331,19 +743,26 @@ def analyze_pdf(path):
 
         result["metadata"] = {
             key: value
-            for key, value in (document.metadata or {}).items()
+            for key, value in (
+                document.metadata or {}
+            ).items()
             if value
         }
 
-        result["pageCount"] = document.page_count
+        result["pageCount"] = (
+            document.page_count
+        )
 
         # ---------------------------------------------------------
         # Page-level analysis
         # ---------------------------------------------------------
 
         all_text = []
+
         urls = []
+
         annotations = 0
+
         form_fields = 0
 
         for page in document:
@@ -352,10 +771,14 @@ def analyze_pdf(path):
             # Native PDF text
             # -----------------------------------------------------
 
-            text = page.get_text("text") or ""
+            text = page.get_text(
+                "text",
+            ) or ""
 
             if text.strip():
-                all_text.append(text)
+                all_text.append(
+                    text,
+                )
 
             # -----------------------------------------------------
             # Links / URLs
@@ -363,19 +786,27 @@ def analyze_pdf(path):
 
             for link in page.get_links():
 
-                uri = link.get("uri")
+                uri = link.get(
+                    "uri",
+                )
 
                 if uri:
-                    urls.append(uri)
+                    urls.append(
+                        uri,
+                    )
 
             # -----------------------------------------------------
             # Annotations
             # -----------------------------------------------------
 
             try:
-                page_annotations = page.annots()
+
+                page_annotations = (
+                    page.annots()
+                )
 
                 if page_annotations:
+
                     annotations += sum(
                         1
                         for _ in page_annotations
@@ -389,9 +820,11 @@ def analyze_pdf(path):
             # -----------------------------------------------------
 
             try:
+
                 widgets = page.widgets()
 
                 if widgets:
+
                     form_fields += sum(
                         1
                         for _ in widgets
@@ -412,8 +845,13 @@ def analyze_pdf(path):
             set(urls),
         )
 
-        result["annotationCount"] = annotations
-        result["formFieldCount"] = form_fields
+        result["annotationCount"] = (
+            annotations
+        )
+
+        result["formFieldCount"] = (
+            form_fields
+        )
 
         # ---------------------------------------------------------
         # OpenAction analysis
@@ -423,10 +861,30 @@ def analyze_pdf(path):
             document,
         )
 
-        result["openAction"] = open_action
+        result["openAction"] = (
+            open_action
+        )
 
         result["hasOpenAction"] = (
             open_action["present"]
+        )
+
+        # ---------------------------------------------------------
+        # Embedded-file analysis
+        # ---------------------------------------------------------
+
+        embedded_files = (
+            extract_embedded_files(
+                document,
+            )
+        )
+
+        result["embeddedFiles"] = (
+            embedded_files
+        )
+
+        result["embeddedFileCount"] = (
+            len(embedded_files)
         )
 
         # ---------------------------------------------------------
@@ -436,12 +894,15 @@ def analyze_pdf(path):
         suspicious_objects = []
 
         javascript_count = 0
-        embedded_file_count = 0
 
         has_launch_action = False
+
         has_additional_actions = False
+
         has_rich_media = False
+
         has_acro_form = False
+
         has_xfa = False
 
         xref_count = document.xref_length()
@@ -453,9 +914,11 @@ def analyze_pdf(path):
 
             try:
 
-                object_text = document.xref_object(
-                    xref,
-                    compressed=False,
+                object_text = (
+                    document.xref_object(
+                        xref,
+                        compressed=False,
+                    )
                 )
 
                 if not object_text:
@@ -508,18 +971,11 @@ def analyze_pdf(path):
                 # -------------------------------------------------
                 # Embedded files
                 #
-                # IMPORTANT:
-                # Do NOT treat /Filespec alone as proof of an
-                # embedded file. A FileSpec can reference a file
-                # without containing an embedded-file stream.
-                #
-                # We currently require the explicit /EmbeddedFile
-                # marker.
+                # Detailed embedded-file extraction above is the
+                # source of truth for the count.
                 # -------------------------------------------------
 
                 if "/embeddedfile" in lower:
-
-                    embedded_file_count += 1
 
                     suspicious_objects.append({
                         "xref": xref,
@@ -572,10 +1028,6 @@ def analyze_pdf(path):
             javascript_count
         )
 
-        result["embeddedFileCount"] = (
-            embedded_file_count
-        )
-
         result["hasLaunchAction"] = (
             has_launch_action
         )
@@ -592,7 +1044,9 @@ def analyze_pdf(path):
             has_acro_form
         )
 
-        result["hasXfa"] = has_xfa
+        result["hasXfa"] = (
+            has_xfa
+        )
 
         # ---------------------------------------------------------
         # Remove duplicate suspicious objects
@@ -611,7 +1065,9 @@ def analyze_pdf(path):
 
             if key not in seen_objects:
 
-                seen_objects.add(key)
+                seen_objects.add(
+                    key,
+                )
 
                 unique_objects.append(
                     item,
@@ -627,7 +1083,9 @@ def analyze_pdf(path):
 
         if extracted_text:
 
-            result["textSource"] = "native"
+            result["textSource"] = (
+                "native"
+            )
 
         else:
 
@@ -661,6 +1119,7 @@ def analyze_pdf(path):
                     )
 
                     if ocr_text:
+
                         ocr_parts.append(
                             ocr_text,
                         )
@@ -683,15 +1142,21 @@ def analyze_pdf(path):
 
                 if combined_ocr_text:
 
-                    result["textSource"] = "ocr"
+                    result["textSource"] = (
+                        "ocr"
+                    )
 
                 else:
 
-                    result["textSource"] = "none"
+                    result["textSource"] = (
+                        "none"
+                    )
 
             else:
 
-                result["textSource"] = "none"
+                result["textSource"] = (
+                    "none"
+                )
 
         document.close()
 
@@ -705,7 +1170,10 @@ def analyze_pdf(path):
     except Exception as error:
 
         result["ok"] = False
-        result["error"] = str(error)
+
+        result["error"] = str(
+            error,
+        )
 
         print(
             json.dumps(

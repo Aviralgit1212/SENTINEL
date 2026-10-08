@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express'
+import fs from 'node:fs/promises'
 
 import { analyzeFile } from '../services/scanService.js'
 
@@ -22,5 +23,20 @@ export async function createScan(
     return res.status(500).json({
       error: 'File analysis failed.',
     })
+  } finally {
+    // --------------------------------
+    // Delete temporary uploaded file
+    // --------------------------------
+
+    if (req.file?.path) {
+      try {
+        await fs.unlink(req.file.path)
+      } catch (cleanupError) {
+        console.error(
+          'Failed to delete temporary upload:',
+          cleanupError,
+        )
+      }
+    }
   }
 }

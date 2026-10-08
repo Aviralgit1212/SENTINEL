@@ -98,6 +98,12 @@ export interface PdfStructureFacts {
 
     embeddedFileCount: number
 
+    /**
+     * Detailed information about files embedded
+     * inside the PDF.
+     */
+    embeddedFiles: PdfEmbeddedFile[]
+
     annotationCount: number
 
     formFieldCount: number
@@ -113,6 +119,51 @@ export interface PdfStructureFacts {
     hasAcroForm: boolean
 
     hasXfa: boolean
+}
+
+export interface PdfEmbeddedFile {
+    /**
+     * Embedded filename if available.
+     */
+    filename: string | null
+
+    /**
+     * MIME type reported by the PDF.
+     */
+    mimeType: string | null
+
+    /**
+     * Size of the embedded file in bytes.
+     */
+    size: number | null
+
+    /**
+     * PDF relationship, when available.
+     *
+     * Example:
+     * Source
+     * Data
+     * Alternative
+     */
+    relationship: string | null
+
+    /**
+     * Whether the embedded object represents
+     * C2PA / Content Credentials.
+     */
+    isC2pa: boolean
+
+    /**
+     * Whether the embedded file appears to be
+     * executable or script-like.
+     */
+    isExecutableLike: boolean
+
+    /**
+     * PDF object number where the embedded file
+     * was found.
+     */
+    xref: number
 }
 
 export interface PdfTextFacts {

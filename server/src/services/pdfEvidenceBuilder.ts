@@ -5,6 +5,7 @@ import {
 import type {
     Evidence,
     PdfFacts,
+    PdfEmbeddedFile,
 } from '../types/scan.js'
 
 export function buildPdfEvidence(
@@ -27,7 +28,8 @@ export function buildPdfEvidence(
             createEvidence({
                 category: 'pdf-security',
 
-                title: 'JavaScript detected',
+                title:
+                    'JavaScript detected',
 
                 description:
                     `The PDF contains ${facts.structure.javascriptCount} JavaScript object(s). PDF JavaScript can be used for legitimate document functionality but may also be abused to perform malicious actions.`,
@@ -36,19 +38,14 @@ export function buildPdfEvidence(
 
                 score: 20,
 
-                source: 'pdf-structure-analysis',
+                source:
+                    'pdf-structure-analysis',
             }),
         )
     }
 
     // ---------------------------------------------------------
     // OpenAction
-    // ---------------------------------------------------------
-    //
-    // The existence of an OpenAction alone is NOT considered
-    // malicious.
-    //
-    // We inspect what the action actually does.
     // ---------------------------------------------------------
 
     const openAction =
@@ -57,14 +54,6 @@ export function buildPdfEvidence(
     if (openAction.present) {
 
         switch (openAction.type) {
-
-            // -------------------------------------------------
-            // GoTo
-            // -------------------------------------------------
-            //
-            // Internal navigation inside the same PDF.
-            // Normally benign.
-            // -------------------------------------------------
 
             case 'GoTo':
 
@@ -88,15 +77,6 @@ export function buildPdfEvidence(
                 )
 
                 break
-
-            // -------------------------------------------------
-            // GoToR
-            // -------------------------------------------------
-            //
-            // Navigation to another document/resource.
-            // Needs more inspection but is not inherently
-            // malicious.
-            // -------------------------------------------------
 
             case 'GoToR':
 
@@ -123,14 +103,6 @@ export function buildPdfEvidence(
 
                 break
 
-            // -------------------------------------------------
-            // URI
-            // -------------------------------------------------
-            //
-            // Opens/navigates to a URL.
-            // The URL itself must be analyzed separately.
-            // -------------------------------------------------
-
             case 'URI':
 
                 evidence.push(
@@ -155,10 +127,6 @@ export function buildPdfEvidence(
                 )
 
                 break
-
-            // -------------------------------------------------
-            // JavaScript
-            // -------------------------------------------------
 
             case 'JavaScript':
 
@@ -185,10 +153,6 @@ export function buildPdfEvidence(
 
                 break
 
-            // -------------------------------------------------
-            // Launch
-            // -------------------------------------------------
-
             case 'Launch':
 
                 evidence.push(
@@ -213,10 +177,6 @@ export function buildPdfEvidence(
                 )
 
                 break
-
-            // -------------------------------------------------
-            // Unknown
-            // -------------------------------------------------
 
             case 'Unknown':
 
@@ -276,10 +236,6 @@ export function buildPdfEvidence(
     // ---------------------------------------------------------
     // Launch action
     // ---------------------------------------------------------
-    //
-    // Keep this separate from OpenAction because Launch can
-    // also appear in other PDF action structures.
-    // ---------------------------------------------------------
 
     if (
         facts.structure.hasLaunchAction &&
@@ -309,30 +265,50 @@ export function buildPdfEvidence(
     // ---------------------------------------------------------
     // Embedded files
     // ---------------------------------------------------------
+    //
+    // IMPORTANT:
+    //
+    // Do NOT assign risk simply because an embedded file exists.
+    //
+    // C2PA / Content Credentials are commonly used for
+    // provenance and authenticity information and should not
+    // automatically increase the security score.
+    //
+    // Executable/script-like embedded files are much more
+    // significant and receive high-risk evidence.
+    //
+    // Other unknown binary attachments receive moderate risk.
+    // ---------------------------------------------------------
 
-    if (
-        facts.structure.embeddedFileCount > 0
-    ) {
+    const embeddedFiles =
+    facts.structure.embeddedFiles
 
-        evidence.push(
-            createEvidence({
-                category: 'pdf-security',
+let c2paEvidenceAdded = false
 
-                title:
-                    'Embedded files detected',
+for (
+    const embeddedFile of embeddedFiles
+) {
 
-                description:
-                    `The PDF contains ${facts.structure.embeddedFileCount} embedded file(s). Embedded files can be legitimate but may also be used to carry malicious content.`,
+    if (embeddedFile.isC2pa) {
 
-                severity: 'medium',
+        if (!c2paEvidenceAdded) {
 
-                score: 15,
+            addEmbeddedFileEvidence(
+                evidence,
+                embeddedFile,
+            )
 
-                source:
-                    'pdf-structure-analysis',
-            }),
-        )
+            c2paEvidenceAdded = true
+        }
+
+        continue
     }
+
+    addEmbeddedFileEvidence(
+        evidence,
+        embeddedFile,
+    )
+}
 
     // ---------------------------------------------------------
     // Rich media
@@ -534,4 +510,125 @@ export function buildPdfEvidence(
     }
 
     return evidence
+}
+
+/**
+ * Converts embedded-file facts into security evidence.
+ *
+ * This function deliberately keeps classification separate
+ * from PDF parsing. The analyzer tells us what exists;
+ * this function decides how much security significance
+ * that observation has.
+ */
+function addEmbeddedFileEvidence(
+    evidence: Evidence[],
+    embeddedFile: PdfEmbeddedFile,
+): void {
+
+    // ---------------------------------------------------------
+    // C2PA / Content Credentials
+    // ---------------------------------------------------------
+    //
+    // C2PA metadata is not inherently malicious.
+    // Do not increase the risk score.
+    // ---------------------------------------------------------
+
+    if (
+        embeddedFile.isC2pa
+    ) {
+
+        const filename =
+            embeddedFile.filename ||
+            'Content Credentials'
+
+        evidence.push(
+            createEvidence({
+                category: 'pdf-provenance',
+
+                title:
+                    'Content Credentials detected',
+
+                description:
+                    `The PDF contains an embedded C2PA/Content Credentials object${filename ? ` (${filename})` : ''}. This is treated as provenance metadata and does not increase the security risk score.`,
+
+                severity: 'low',
+
+                score: 0,
+
+                source:
+                    'pdf-embedded-file-analysis',
+            }),
+        )
+
+        return
+    }
+
+    // ---------------------------------------------------------
+    // Executable / script-like embedded file
+    // ---------------------------------------------------------
+
+    if (
+        embeddedFile.isExecutableLike
+    ) {
+
+        const filename =
+            embeddedFile.filename ||
+            'unknown embedded file'
+
+        const mimeType =
+            embeddedFile.mimeType ||
+            'unknown MIME type'
+
+        evidence.push(
+            createEvidence({
+                category: 'pdf-security',
+
+                title:
+                    'Executable or script-like embedded file detected',
+
+                description:
+                    `The PDF contains an embedded file that appears executable or script-like: ${filename} (${mimeType}). Embedded executable content can be used to deliver or trigger malicious payloads.`,
+
+                severity: 'high',
+
+                score: 25,
+
+                source:
+                    'pdf-embedded-file-analysis',
+            }),
+        )
+
+        return
+    }
+
+    // ---------------------------------------------------------
+    // Unknown / generic embedded file
+    // ---------------------------------------------------------
+
+    const filename =
+        embeddedFile.filename ||
+        'unknown embedded file'
+
+    const mimeType =
+        embeddedFile.mimeType ||
+        'unknown MIME type'
+
+    evidence.push(
+        createEvidence({
+            category: 'pdf-security',
+
+            title:
+                'Embedded file detected',
+
+            description:
+                `The PDF contains an embedded file: ${filename} (${mimeType}). Embedded attachments can be legitimate, but their contents should be inspected before being trusted.`,
+
+            severity: 'medium',
+
+            score: 5,
+
+            source:
+                'pdf-embedded-file-analysis',
+        }),
+    )
 }
