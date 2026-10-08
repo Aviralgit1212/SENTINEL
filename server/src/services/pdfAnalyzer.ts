@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 
 import type {
+    PdfEmbeddedFile,
     PdfFacts,
     PdfOpenAction,
     PdfSuspiciousObject,
@@ -19,6 +20,8 @@ interface PythonResult {
     javascriptCount?: number
 
     embeddedFileCount?: number
+
+    embeddedFiles?: PdfEmbeddedFile[]
 
     annotationCount?: number
 
@@ -310,6 +313,9 @@ export function analyzePdf(
                             embeddedFileCount:
                                 parsed.embeddedFileCount ?? 0,
 
+                            embeddedFiles:
+                                parsed.embeddedFiles ?? [],
+
                             annotationCount:
                                 parsed.annotationCount ?? 0,
 
@@ -452,13 +458,6 @@ function normalizeOpenAction(
     // --------------------------------
     // Backward compatibility
     // --------------------------------
-    //
-    // If an older Python analyzer output is
-    // encountered, preserve the OpenAction fact.
-    //
-    // We cannot determine its exact behavior,
-    // therefore it is classified as Unknown.
-    // --------------------------------
 
     if (parsed.hasOpenAction) {
 
@@ -528,6 +527,9 @@ function createFailedFacts(
 
             embeddedFileCount:
                 0,
+
+            embeddedFiles:
+                [],
 
             annotationCount:
                 0,

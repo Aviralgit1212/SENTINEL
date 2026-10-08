@@ -7,383 +7,378 @@ import { scanWithClamAV } from './clamAvService.js'
 import { analyzePdf } from './pdfAnalyzer.js'
 import { buildPdfEvidence } from './pdfEvidenceBuilder.js'
 
+import { Scan } from '../models/Scan.js'
+
 import {
-    calculateRisk,
-    createEvidence,
-    recommendationForRisk,
-    riskLevelFromScore,
+  calculateRisk,
+  createEvidence,
+  recommendationForRisk,
+  riskLevelFromScore,
 } from '../utils/evidence.js'
 
 import type {
-    Evidence,
-    ScanResult,
+  Evidence,
+  ScanResult,
 } from '../types/scan.js'
 
 export async function analyzeFile(
-    file: Express.Multer.File,
+  file: Express.Multer.File,
 ): Promise<ScanResult> {
 
-    const scanId = randomUUID()
+  const scanId = randomUUID()
 
-    // --------------------------------
-    // 1. Detect actual file type
-    // --------------------------------
+  // --------------------------------
+  // 1. Detect actual file type
+  // --------------------------------
 
-    const fileType = await detectFileType(
-        file.path,
-        file.originalname,
+  const fileType = await detectFileType(
+    file.path,
+    file.originalname,
+  )
+
+  // --------------------------------
+  // 2. Calculate SHA-256 fingerprint
+  // --------------------------------
+
+  const sha256 = await calculateSha256(
+    file.path,
+  )
+
+  // --------------------------------
+  // 3. Antivirus scan
+  // --------------------------------
+
+  const antivirus = await scanWithClamAV(
+    file.path,
+  )
+
+  // --------------------------------
+  // 4. File-specific deep analysis
+  // --------------------------------
+
+  const pdfAnalysis =
+    fileType.detectedExtension === 'pdf'
+      ? await analyzePdf(file.path)
+      : null
+
+  // --------------------------------
+  // 5. Collect security evidence
+  // --------------------------------
+
+  const evidence: Evidence[] = []
+
+  // --------------------------------
+  // File type mismatch
+  // --------------------------------
+
+  if (fileType.extensionMismatch) {
+    evidence.push(
+      createEvidence({
+        category: 'file-type',
+
+        title:
+          'File type mismatch',
+
+        description:
+          'The filename extension does not match the detected file type.',
+
+        severity: 'high',
+
+        score: 15,
+
+        source:
+          'magic-byte-analysis',
+      }),
+    )
+  }
+
+  // --------------------------------
+  // ClamAV detected malware
+  // --------------------------------
+
+  if (antivirus.status === 'threat') {
+    evidence.push(
+      createEvidence({
+        category: 'malware',
+
+        title:
+          'Malware detected',
+
+        description:
+          antivirus.details,
+
+        severity: 'critical',
+
+        score: 50,
+
+        source:
+          'clamav',
+      }),
+    )
+  }
+
+  // --------------------------------
+  // ClamAV unavailable
+  // --------------------------------
+
+  if (antivirus.status === 'unavailable') {
+    evidence.push(
+      createEvidence({
+        category: 'scanner',
+
+        title:
+          'Antivirus scanner unavailable',
+
+        description:
+          'ClamAV was not available for this scan.',
+
+        severity: 'medium',
+
+        score: 5,
+
+        source:
+          'clamav',
+      }),
+    )
+  }
+
+  // --------------------------------
+  // PDF-specific evidence
+  // --------------------------------
+
+  if (pdfAnalysis) {
+    const pdfEvidence =
+      buildPdfEvidence(
+        pdfAnalysis,
+      )
+
+    evidence.push(
+      ...pdfEvidence,
+    )
+  }
+
+  // --------------------------------
+  // 6. Calculate risk score
+  // --------------------------------
+
+  const riskScore =
+    calculateRisk(
+      evidence,
     )
 
-    // --------------------------------
-    // 2. Calculate SHA-256 fingerprint
-    // --------------------------------
+  // --------------------------------
+  // 7. Convert score to risk level
+  // --------------------------------
 
-    const sha256 = await calculateSha256(
-        file.path,
+  const riskLevel =
+    riskLevelFromScore(
+      riskScore,
     )
 
-    // --------------------------------
-    // 3. Antivirus scan
-    // --------------------------------
+  const risk = {
+    score: riskScore,
+    level: riskLevel,
+  }
 
-    const antivirus = await scanWithClamAV(
-        file.path,
+  // --------------------------------
+  // 8. Determine recommendation
+  // --------------------------------
+
+  const recommendation =
+    recommendationForRisk(
+      riskScore,
     )
 
-    // --------------------------------
-    // 4. File-specific deep analysis
-    // --------------------------------
+  // --------------------------------
+  // 9. Build final scan result
+  // --------------------------------
 
-    const pdfAnalysis =
-        fileType.detectedExtension === 'pdf'
-            ? await analyzePdf(file.path)
-            : null
+  const result: ScanResult = {
 
-    // --------------------------------
-    // 5. Collect security evidence
-    // --------------------------------
+    scanId,
 
-    const evidence: Evidence[] = []
+    filename:
+      file.originalname,
 
-    // --------------------------------
-    // File type mismatch
-    // --------------------------------
+    size:
+      file.size,
 
-    if (fileType.extensionMismatch) {
+    status:
+      'completed',
 
-        evidence.push(
-            createEvidence({
-                category: 'file-type',
+    fileType,
 
-                title:
-                    'File type mismatch',
+    hash: {
 
-                description:
-                    'The filename extension does not match the detected file type.',
+      algorithm:
+        'sha256',
 
-                severity: 'high',
+      value:
+        sha256,
+    },
 
-                score: 15,
+    antivirus: {
 
-                source:
-                    'magic-byte-analysis',
-            }),
-        )
-    }
+      engine:
+        'clamav',
 
-    // --------------------------------
-    // ClamAV detected malware
-    // --------------------------------
+      available:
+        antivirus.available,
 
-    if (
-        antivirus.status === 'threat'
-    ) {
+      status:
+        antivirus.status,
 
-        evidence.push(
-            createEvidence({
-                category: 'malware',
+      details:
+        antivirus.details,
+    },
 
-                title:
-                    'Malware detected',
+    pdfAnalysis:
+      pdfAnalysis
+        ? {
 
-                description:
-                    antivirus.details,
+            supported:
+              pdfAnalysis.supported,
 
-                severity: 'critical',
+            metadata:
+              pdfAnalysis.metadata,
 
-                score: 50,
+            structure: {
 
-                source:
-                    'clamav',
-            }),
-        )
-    }
+              pageCount:
+                pdfAnalysis.structure.pageCount,
 
-    // --------------------------------
-    // ClamAV unavailable
-    // --------------------------------
+              javascriptCount:
+                pdfAnalysis.structure.javascriptCount,
 
-    if (
-        antivirus.status === 'unavailable'
-    ) {
+              embeddedFileCount:
+                pdfAnalysis.structure.embeddedFileCount,
 
-        evidence.push(
-            createEvidence({
-                category: 'scanner',
+              annotationCount:
+                pdfAnalysis.structure.annotationCount,
 
-                title:
-                    'Antivirus scanner unavailable',
+              formFieldCount:
+                pdfAnalysis.structure.formFieldCount,
 
-                description:
-                    'ClamAV was not available for this scan.',
+              embeddedFiles:
+                pdfAnalysis.structure.embeddedFiles,
 
-                severity: 'medium',
+              openAction: {
 
-                score: 5,
+                present:
+                  pdfAnalysis.structure.openAction.present,
 
-                source:
-                    'clamav',
-            }),
-        )
-    }
+                type:
+                  pdfAnalysis.structure.openAction.type,
 
-    // --------------------------------
-    // PDF-specific evidence
-    // --------------------------------
+                rawType:
+                  pdfAnalysis.structure.openAction.rawType,
 
-    if (pdfAnalysis) {
+                target:
+                  pdfAnalysis.structure.openAction.target,
+              },
 
-        const pdfEvidence =
-            buildPdfEvidence(
-                pdfAnalysis,
-            )
+              hasLaunchAction:
+                pdfAnalysis.structure.hasLaunchAction,
 
-        evidence.push(
-            ...pdfEvidence,
-        )
-    }
+              hasAdditionalActions:
+                pdfAnalysis.structure.hasAdditionalActions,
 
-    // --------------------------------
-    // 6. Calculate risk score
-    // --------------------------------
+              hasRichMedia:
+                pdfAnalysis.structure.hasRichMedia,
 
-    const riskScore =
-        calculateRisk(
-            evidence,
-        )
+              hasAcroForm:
+                pdfAnalysis.structure.hasAcroForm,
 
-    // --------------------------------
-    // 7. Convert score to risk level
-    // --------------------------------
+              hasXfa:
+                pdfAnalysis.structure.hasXfa,
+            },
 
-    const riskLevel =
-        riskLevelFromScore(
-            riskScore,
-        )
+            links: {
 
-    const risk = {
-        score: riskScore,
-        level: riskLevel,
-    }
+              urls:
+                pdfAnalysis.links.urls,
+            },
 
-    // --------------------------------
-    // 8. Determine recommendation
-    // --------------------------------
+            text: {
 
-    const recommendation =
-        recommendationForRisk(
-            riskScore,
-        )
+              nativeTextLength:
+                pdfAnalysis.text.nativeTextLength,
 
-    // --------------------------------
-    // 9. Build final scan result
-    // --------------------------------
+              ocrAttempted:
+                pdfAnalysis.text.ocrAttempted,
 
-    return {
+              ocrAvailable:
+                pdfAnalysis.text.ocrAvailable,
 
-        scanId,
+              ocrTextLength:
+                pdfAnalysis.text.ocrTextLength,
 
-        filename:
-            file.originalname,
+              ocrPageCount:
+                pdfAnalysis.text.ocrPageCount,
 
-        size:
-            file.size,
+              source:
+                pdfAnalysis.text.source,
+            },
 
-        status:
-            'completed',
+            suspiciousObjects:
+              pdfAnalysis.suspiciousObjects,
+          }
+        : undefined,
 
-        // --------------------------------
-        // File type
-        // --------------------------------
+    evidence,
 
-        fileType,
+    risk,
 
-        // --------------------------------
-        // SHA-256
-        // --------------------------------
+    recommendation,
+  }
 
-        hash: {
+  // --------------------------------
+  // 10. Save scan to MongoDB
+  // --------------------------------
 
-            algorithm:
-                'sha256',
+  await Scan.create({
+    scanId: result.scanId,
 
-            value:
-                sha256,
-        },
+    // Temporary until Clerk authentication
+    // is connected to the backend.
+    userId: 'local-dev-user',
 
-        // --------------------------------
-        // Antivirus
-        // --------------------------------
+    filename: result.filename,
 
-        antivirus: {
+    size: result.size,
 
-            engine:
-                'clamav',
+    extension:
+      fileType.detectedExtension
+        ? `.${fileType.detectedExtension}`
+        : null,
 
-            available:
-                antivirus.available,
+    detectedExtension:
+      fileType.detectedExtension,
 
-            status:
-                antivirus.status,
+    mimeType:
+      fileType.detectedMime,
 
-            details:
-                antivirus.details,
-        },
+    sha256:
+      result.hash.value,
 
-        // --------------------------------
-        // PDF facts
-        // --------------------------------
+    status:
+      result.status,
 
-        pdfAnalysis:
-            pdfAnalysis
-                ? {
+    antivirus:
+      result.antivirus,
 
-                    supported:
-                        pdfAnalysis.supported,
+    risk:
+      result.risk,
 
-                    metadata:
-                        pdfAnalysis.metadata,
+    recommendation:
+      result.recommendation,
 
-                    // --------------------------------
-                    // PDF structure
-                    // --------------------------------
+    evidence:
+      result.evidence,
 
-                    structure: {
+    pdfAnalysis:
+      result.pdfAnalysis ?? null,
+  })
 
-                        pageCount:
-                            pdfAnalysis.structure.pageCount,
-
-                        javascriptCount:
-                            pdfAnalysis.structure.javascriptCount,
-
-                        embeddedFileCount:
-                            pdfAnalysis.structure.embeddedFileCount,
-
-                        annotationCount:
-                            pdfAnalysis.structure.annotationCount,
-
-                        formFieldCount:
-                            pdfAnalysis.structure.formFieldCount,
-
-                        // --------------------------------
-                        // OpenAction
-                        // --------------------------------
-
-                        openAction: {
-
-                            present:
-                                pdfAnalysis.structure.openAction.present,
-
-                            type:
-                                pdfAnalysis.structure.openAction.type,
-
-                            rawType:
-                                pdfAnalysis.structure.openAction.rawType,
-
-                            target:
-                                pdfAnalysis.structure.openAction.target,
-                        },
-
-                        // --------------------------------
-                        // Other PDF actions / structures
-                        // --------------------------------
-
-                        hasLaunchAction:
-                            pdfAnalysis.structure.hasLaunchAction,
-
-                        hasAdditionalActions:
-                            pdfAnalysis.structure.hasAdditionalActions,
-
-                        hasRichMedia:
-                            pdfAnalysis.structure.hasRichMedia,
-
-                        hasAcroForm:
-                            pdfAnalysis.structure.hasAcroForm,
-
-                        hasXfa:
-                            pdfAnalysis.structure.hasXfa,
-                    },
-
-                    // --------------------------------
-                    // Links
-                    // --------------------------------
-
-                    links: {
-
-                        urls:
-                            pdfAnalysis.links.urls,
-                    },
-
-                    // --------------------------------
-                    // Text / OCR
-                    // --------------------------------
-
-                    text: {
-
-                        nativeTextLength:
-                            pdfAnalysis.text.nativeTextLength,
-
-                        ocrAttempted:
-                            pdfAnalysis.text.ocrAttempted,
-
-                        ocrAvailable:
-                            pdfAnalysis.text.ocrAvailable,
-
-                        ocrTextLength:
-                            pdfAnalysis.text.ocrTextLength,
-
-                        ocrPageCount:
-                            pdfAnalysis.text.ocrPageCount,
-
-                        source:
-                            pdfAnalysis.text.source,
-                    },
-
-                    // --------------------------------
-                    // Suspicious PDF objects
-                    // --------------------------------
-
-                    suspiciousObjects:
-                        pdfAnalysis.suspiciousObjects,
-                }
-                : undefined,
-
-        // --------------------------------
-        // Security evidence
-        // --------------------------------
-
-        evidence,
-
-        // --------------------------------
-        // Risk
-        // --------------------------------
-
-        risk,
-
-        // --------------------------------
-        // Recommendation
-        // --------------------------------
-
-        recommendation,
-    }
+  return result
 }
