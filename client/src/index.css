@@ -215,6 +215,10 @@ body:has(dialog[open]) {
   color: var(--danger);
 }
 
+.risk-critical {
+  color: var(--danger);
+}
+
 /* Table base -------------------------------------------------- */
 
 .table-scroll {
