@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { Search, X } from 'lucide-react'
 
 import type {
@@ -22,7 +23,9 @@ type RiskFilter = Risk | 'all'
 
 const API_BASE_URL = 'http://localhost:5001'
 
-function mapScanToRecord(scan: ScanHistoryResponse): ScanRecord {
+function mapScanToRecord(
+  scan: ScanHistoryResponse,
+): ScanRecord {
   return {
     id: scan.scanId,
     name: scan.filename,
@@ -52,14 +55,21 @@ function ScanTable({
         <tbody>
           {records.map((record) => (
             <tr key={record.id}>
-              <td className="file">{record.name}</td>
-
-              <td>
-                {formatDate(record.scannedAt, dateFormat)}
+              <td className="file">
+                {record.name}
               </td>
 
               <td>
-                <RiskBadge risk={record.risk} />
+                {formatDate(
+                  record.scannedAt,
+                  dateFormat,
+                )}
+              </td>
+
+              <td>
+                <RiskBadge
+                  risk={record.risk}
+                />
               </td>
             </tr>
           ))}
@@ -74,18 +84,23 @@ export default function RecentScans({
   historyOpen,
   onCloseHistory,
 }: Props) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+  const dialogRef =
+    useRef<HTMLDialogElement>(null)
+
+  const { getToken } = useAuth()
 
   const [dateFormat] = useState(
     () => readPreferences().dateFormat,
   )
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] =
+    useState('')
 
   const [riskFilter, setRiskFilter] =
     useState<RiskFilter>('all')
 
-  const [scans, setScans] = useState<ScanRecord[]>([])
+  const [scans, setScans] =
+    useState<ScanRecord[]>([])
 
   const [loading, setLoading] =
     useState(true)
@@ -105,16 +120,36 @@ export default function RecentScans({
       setError(null)
 
       try {
+        // Get the current Clerk session token.
+        const token = await getToken()
+
+        if (!token) {
+          throw new Error(
+            'Your session has expired. Please sign in again.',
+          )
+        }
+
         const response = await fetch(
           `${API_BASE_URL}/api/scans`,
+          {
+            method: 'GET',
+
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
         )
 
         const data =
-          (await response.json()) as ScanHistoryResponse[]
+          (await response.json()) as
+            | ScanHistoryResponse[]
+            | { error?: string }
 
         if (!response.ok) {
           throw new Error(
-            'Failed to load scan history.',
+            'error' in data && data.error
+              ? data.error
+              : 'Failed to load scan history.',
           )
         }
 
@@ -149,7 +184,7 @@ export default function RecentScans({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [getToken])
 
   // --------------------------------
   // Dialog
@@ -160,11 +195,17 @@ export default function RecentScans({
 
     if (!dialog) return
 
-    if (historyOpen && !dialog.open) {
+    if (
+      historyOpen &&
+      !dialog.open
+    ) {
       dialog.showModal()
     }
 
-    if (!historyOpen && dialog.open) {
+    if (
+      !historyOpen &&
+      dialog.open
+    ) {
       dialog.close()
     }
   }, [historyOpen])
@@ -191,7 +232,11 @@ export default function RecentScans({
           scan.risk === riskFilter
         ),
     )
-  }, [scans, search, riskFilter])
+  }, [
+    scans,
+    search,
+    riskFilter,
+  ])
 
   function clearFilters() {
     setSearch('')
@@ -216,7 +261,8 @@ export default function RecentScans({
             </h2>
 
             <p>
-              Your latest file analysis results.
+              Your latest file analysis
+              results.
             </p>
           </div>
 
@@ -232,7 +278,9 @@ export default function RecentScans({
 
         {loading ? (
           <div className="history-empty">
-            <p>Loading scan history...</p>
+            <p>
+              Loading scan history...
+            </p>
           </div>
         ) : error ? (
           <div className="history-empty">
@@ -241,8 +289,8 @@ export default function RecentScans({
         ) : scans.length === 0 ? (
           <div className="history-empty">
             <p>
-              No scans yet. Upload a file to
-              start your first analysis.
+              No scans yet. Upload a file
+              to start your first analysis.
             </p>
           </div>
         ) : (
@@ -359,7 +407,9 @@ export default function RecentScans({
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={clearFilters}
+                  onClick={
+                    clearFilters
+                  }
                 >
                   Clear filters
                 </button>

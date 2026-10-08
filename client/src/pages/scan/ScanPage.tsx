@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   ShieldCheck,
@@ -19,7 +20,7 @@ interface ScanResult {
   scanId: string
   filename: string
   size: number
-  status: string
+  status: 'analyzing' | 'completed' | 'failed'
 
   fileType: {
     detectedExtension: string | null
@@ -58,13 +59,336 @@ interface ScanResult {
   recommendation?: 'allow' | 'review' | 'block'
 }
 
+const API_BASE_URL = 'http://localhost:5001'
+
+const POLL_INTERVAL_MS = 1000
+const MAX_POLL_ATTEMPTS = 180
+
+/*
+ * React StrictMode can mount, unmount and mount
+ * the component again during development.
+ *
+ * This map makes both mounts reuse the same
+ * in-flight request.
+ *
+ * Backend idempotency remains the real protection.
+ */
+const inFlightScans = new Map<
+  string,
+  Promise<ScanResult>
+>()
+
+function isScanResult(
+  value: unknown,
+): value is ScanResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'scanId' in value &&
+    'status' in value &&
+    (value as { status?: unknown }).status ===
+      'completed'
+  )
+}
+
+/*
+ * Safely parse server responses.
+ *
+ * This prevents errors such as:
+ * Unexpected token '<'
+ *
+ * when the server accidentally returns HTML.
+ */
+async function readJson(
+  response: Response,
+): Promise<unknown> {
+  const text = await response.text()
+
+  if (!text) {
+    return null
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    throw new Error(
+      `Server returned an invalid response (${response.status}).`,
+    )
+  }
+}
+
+/*
+ * If another request already created the scan,
+ * the backend returns 202 + scanId.
+ *
+ * We wait for that existing scan instead of
+ * starting another analysis.
+ */
+async function waitForScanResult(
+  scanId: string,
+  token: string,
+): Promise<ScanResult> {
+  for (
+    let attempt = 0;
+    attempt < MAX_POLL_ATTEMPTS;
+    attempt += 1
+  ) {
+    await new Promise<void>((resolve) => {
+      window.setTimeout(
+        resolve,
+        POLL_INTERVAL_MS,
+      )
+    })
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/scans/${encodeURIComponent(
+        scanId,
+      )}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    const data = await readJson(response)
+
+    if (!response.ok) {
+      const message =
+        typeof data === 'object' &&
+        data !== null &&
+        'error' in data &&
+        typeof (
+          data as {
+            error?: unknown
+          }
+        ).error === 'string'
+          ? (
+              data as {
+                error: string
+              }
+            ).error
+          : 'Unable to retrieve the scan result.'
+
+      throw new Error(message)
+    }
+
+    if (isScanResult(data)) {
+      return data
+    }
+
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'status' in data
+    ) {
+      const status = (
+        data as {
+          status?: unknown
+          error?: unknown
+        }
+      ).status
+
+      if (status === 'failed') {
+        const errorMessage = (
+          data as {
+            error?: unknown
+          }
+        ).error
+
+        throw new Error(
+          typeof errorMessage === 'string'
+            ? errorMessage
+            : 'File analysis failed.',
+        )
+      }
+
+      if (status === 'analyzing') {
+        continue
+      }
+    }
+
+    throw new Error(
+      'The server returned an invalid scan status.',
+    )
+  }
+
+  throw new Error(
+    'The scan is taking longer than expected. Please check the scan history.',
+  )
+}
+
+/*
+ * Performs the actual POST request.
+ */
+async function executeScan(
+  file: File,
+  scanRequestId: string,
+  getToken: () => Promise<string | null>,
+): Promise<ScanResult> {
+  const token = await getToken()
+
+  if (!token) {
+    throw new Error(
+      'Your session has expired. Please sign in again.',
+    )
+  }
+
+  const formData = new FormData()
+
+  formData.append('file', file)
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/scans`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+
+        /*
+         * Identifies the logical scan.
+         */
+        'X-Scan-Request-Id': scanRequestId,
+      },
+      body: formData,
+    },
+  )
+
+  const data = await readJson(response)
+
+  /*
+   * Another request already created the scan.
+   *
+   * Don't analyze again. Wait for the existing
+   * scan to finish.
+   */
+  if (response.status === 202) {
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'scanId' in data &&
+      typeof (
+        data as {
+          scanId?: unknown
+        }
+      ).scanId === 'string'
+    ) {
+      return waitForScanResult(
+        (
+          data as {
+            scanId: string
+          }
+        ).scanId,
+        token,
+      )
+    }
+
+    throw new Error(
+      'The server did not return a scan ID.',
+    )
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === 'object' &&
+      data !== null &&
+      'error' in data &&
+      typeof (
+        data as {
+          error?: unknown
+        }
+      ).error === 'string'
+        ? (
+            data as {
+              error: string
+            }
+          ).error
+        : 'Scan failed.'
+
+    throw new Error(message)
+  }
+
+  if (!isScanResult(data)) {
+    throw new Error(
+      'The server returned an invalid scan result.',
+    )
+  }
+
+  return data
+}
+
+/*
+ * Reuse an existing request for the same
+ * scanRequestId.
+ *
+ * This protects the frontend from React
+ * StrictMode duplicate effects.
+ */
+function requestScan(
+  file: File,
+  scanRequestId: string,
+  getToken: () => Promise<string | null>,
+): Promise<ScanResult> {
+  const existing =
+    inFlightScans.get(scanRequestId)
+
+  if (existing) {
+    return existing
+  }
+
+  const promise = executeScan(
+    file,
+    scanRequestId,
+    getToken,
+  )
+
+  inFlightScans.set(
+    scanRequestId,
+    promise,
+  )
+
+  void promise.then(
+    () => {
+      if (
+        inFlightScans.get(scanRequestId) ===
+        promise
+      ) {
+        inFlightScans.delete(
+          scanRequestId,
+        )
+      }
+    },
+    () => {
+      if (
+        inFlightScans.get(scanRequestId) ===
+        promise
+      ) {
+        inFlightScans.delete(
+          scanRequestId,
+        )
+      }
+    },
+  )
+
+  return promise
+}
+
 export default function ScanPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const { getToken } = useAuth()
+
   const file =
     location.state?.file instanceof File
       ? location.state.file
+      : null
+
+  const scanRequestId =
+    typeof location.state?.scanRequestId ===
+    'string'
+      ? location.state.scanRequestId
       : null
 
   const [result, setResult] =
@@ -77,7 +401,9 @@ export default function ScanPage() {
     useState<string | null>(null)
 
   useEffect(() => {
-    if (!file) return
+    if (!file || !scanRequestId) {
+      return
+    }
 
     let cancelled = false
 
@@ -85,29 +411,16 @@ export default function ScanPage() {
       setLoading(true)
       setError(null)
 
-      const formData = new FormData()
-
-      formData.append('file', file)
-
       try {
-        const response = await fetch(
-          'http://localhost:5001/api/scans',
-          {
-            method: 'POST',
-            body: formData,
-          },
-        )
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(
-            data.error ?? 'Scan failed.',
+        const scanResult =
+          await requestScan(
+            file,
+            scanRequestId,
+            getToken,
           )
-        }
 
         if (!cancelled) {
-          setResult(data)
+          setResult(scanResult)
         }
       } catch (scanError) {
         if (!cancelled) {
@@ -129,13 +442,16 @@ export default function ScanPage() {
     return () => {
       cancelled = true
     }
-  }, [file])
+  }, [
+    file,
+    scanRequestId,
+    getToken,
+  ])
 
-  // --------------------------------
-  // No file selected
-  // --------------------------------
-
-  if (!file) {
+  /*
+   * No file selected.
+   */
+  if (!file || !scanRequestId) {
     return (
       <main className="page scan-page">
         <div className="scan-state-card">
@@ -151,7 +467,9 @@ export default function ScanPage() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => navigate('/dashboard')}
+            onClick={() =>
+              navigate('/dashboard')
+            }
           >
             <ArrowLeft size={17} />
             Back to dashboard
@@ -161,10 +479,9 @@ export default function ScanPage() {
     )
   }
 
-  // --------------------------------
-  // Loading
-  // --------------------------------
-
+  /*
+   * Loading.
+   */
   if (loading) {
     return (
       <main className="page scan-page">
@@ -193,10 +510,9 @@ export default function ScanPage() {
     )
   }
 
-  // --------------------------------
-  // Error
-  // --------------------------------
-
+  /*
+   * Error.
+   */
   if (error) {
     return (
       <main className="page scan-page">
@@ -210,7 +526,9 @@ export default function ScanPage() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => navigate('/dashboard')}
+            onClick={() =>
+              navigate('/dashboard')
+            }
           >
             <ArrowLeft size={17} />
             Back to dashboard
@@ -220,12 +538,13 @@ export default function ScanPage() {
     )
   }
 
-  if (!result) return null
+  if (!result) {
+    return null
+  }
 
-  // --------------------------------
-  // Safe values
-  // --------------------------------
-
+  /*
+   * Safe values.
+   */
   const riskScore =
     typeof result.risk?.score === 'number'
       ? result.risk.score
@@ -267,11 +586,7 @@ export default function ScanPage() {
 
   return (
     <main className="page scan-page">
-
-      {/* --------------------------------
-          Header
-      -------------------------------- */}
-
+      {/* Header */}
       <header className="scan-header">
         <div>
           <div className="scan-header-label">
@@ -293,15 +608,11 @@ export default function ScanPage() {
         </div>
       </header>
 
-
-      {/* --------------------------------
-          Main risk card
-      -------------------------------- */}
-
-      <section className={`risk-card ${riskClass}`}>
-
+      {/* Main risk card */}
+      <section
+        className={`risk-card ${riskClass}`}
+      >
         <div className="risk-card-top">
-
           <div>
             <span className="section-eyebrow">
               OVERALL SECURITY RISK
@@ -321,7 +632,6 @@ export default function ScanPage() {
           <div className="risk-icon">
             <ShieldCheck size={54} />
           </div>
-
         </div>
 
         <div className="risk-bar">
@@ -342,25 +652,18 @@ export default function ScanPage() {
 
           <div>
             <span>RECOMMENDATION</span>
+
             <strong>
               {recommendationLabel}
             </strong>
           </div>
         </div>
-
       </section>
 
-
-      {/* --------------------------------
-          Two information cards
-      -------------------------------- */}
-
+      {/* File verification + antivirus */}
       <div className="scan-grid">
-
         {/* File Verification */}
-
         <section className="scan-card">
-
           <div className="card-heading">
             <div className="card-icon">
               <FileCheck2 size={20} />
@@ -373,9 +676,9 @@ export default function ScanPage() {
           </div>
 
           <div className="info-list">
-
             <div className="info-row">
               <span>Detected type</span>
+
               <strong>
                 {result.fileType.detectedType ??
                   'Unknown'}
@@ -384,6 +687,7 @@ export default function ScanPage() {
 
             <div className="info-row">
               <span>MIME type</span>
+
               <strong>
                 {result.fileType.detectedMime ??
                   'Unknown'}
@@ -392,8 +696,10 @@ export default function ScanPage() {
 
             <div className="info-row">
               <span>Extension</span>
+
               <strong>
-                {result.fileType.detectedExtension ??
+                {result.fileType
+                  .detectedExtension ??
                   'Unknown'}
               </strong>
             </div>
@@ -403,26 +709,23 @@ export default function ScanPage() {
 
               <strong
                 className={
-                  result.fileType.extensionMismatch
+                  result.fileType
+                    .extensionMismatch
                     ? 'danger-text'
                     : 'success-text'
                 }
               >
-                {result.fileType.extensionMismatch
+                {result.fileType
+                  .extensionMismatch
                   ? 'Detected'
                   : 'None'}
               </strong>
             </div>
-
           </div>
-
         </section>
 
-
         {/* Antivirus */}
-
         <section className="scan-card">
-
           <div className="card-heading">
             <div className="card-icon">
               <ShieldCheck size={20} />
@@ -435,7 +738,6 @@ export default function ScanPage() {
           </div>
 
           <div className="antivirus-status">
-
             <div
               className={
                 result.antivirus.available
@@ -461,26 +763,17 @@ export default function ScanPage() {
                 {result.antivirus.engine}
               </span>
             </div>
-
           </div>
 
           <p className="card-description">
             {result.antivirus.details}
           </p>
-
         </section>
-
       </div>
 
-
-      {/* --------------------------------
-          Fingerprint
-      -------------------------------- */}
-
+      {/* Fingerprint */}
       <section className="scan-card fingerprint-card">
-
         <div className="card-heading">
-
           <div className="card-icon">
             <Fingerprint size={20} />
           </div>
@@ -489,7 +782,6 @@ export default function ScanPage() {
             <span>FILE IDENTITY</span>
             <h2>File Fingerprint</h2>
           </div>
-
         </div>
 
         <p className="fingerprint-description">
@@ -500,18 +792,11 @@ export default function ScanPage() {
         <div className="hash-box">
           <code>{result.hash.value}</code>
         </div>
-
       </section>
 
-
-      {/* --------------------------------
-          Security Evidence
-      -------------------------------- */}
-
+      {/* Security Evidence */}
       <section className="scan-card evidence-card">
-
         <div className="card-heading">
-
           <div className="card-icon">
             <ShieldAlert size={20} />
           </div>
@@ -524,40 +809,35 @@ export default function ScanPage() {
           <div className="evidence-count">
             {result.evidence.length}
           </div>
-
         </div>
 
         {result.evidence.length === 0 ? (
-
           <div className="no-evidence">
             <CheckCircle2 size={24} />
 
             <div>
-              <strong>No security findings</strong>
+              <strong>
+                No security findings
+              </strong>
+
               <p>
-                No suspicious findings were generated
-                by the current analyzers.
+                No suspicious findings were
+                generated by the current analyzers.
               </p>
             </div>
           </div>
-
         ) : (
-
           <div className="evidence-list">
-
             {result.evidence.map((item) => (
-
               <article
                 className="evidence-item"
                 key={item.id}
               >
-
                 <div className="evidence-marker">
                   <ShieldAlert size={18} />
                 </div>
 
                 <div className="evidence-content">
-
                   <div className="evidence-title-row">
                     <strong>
                       {item.title}
@@ -585,30 +865,21 @@ export default function ScanPage() {
                       Score: {item.score}
                     </span>
                   </div>
-
                 </div>
-
               </article>
-
             ))}
-
           </div>
-
         )}
-
       </section>
 
-
-      {/* --------------------------------
-          Footer
-      -------------------------------- */}
-
+      {/* Footer */}
       <div className="scan-footer">
-
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => navigate('/dashboard')}
+          onClick={() =>
+            navigate('/dashboard')
+          }
         >
           <ArrowLeft size={17} />
           Back to dashboard
@@ -617,9 +888,7 @@ export default function ScanPage() {
         <span>
           Scan ID: {result.scanId}
         </span>
-
       </div>
-
     </main>
   )
 }

@@ -61,6 +61,18 @@ const ScanSchema = new Schema(
       index: true,
     },
 
+    /*
+     * One logical scan operation gets one
+     * request ID.
+     *
+     * It is intentionally optional because
+     * older history records don't have it.
+     */
+    scanRequestId: {
+      type: String,
+      default: null,
+    },
+
     userId: {
       type: String,
       required: true,
@@ -86,6 +98,11 @@ const ScanSchema = new Schema(
     detectedExtension: {
       type: String,
       default: null,
+    },
+
+    extensionMismatch: {
+      type: Boolean,
+      default: false,
     },
 
     mimeType: {
@@ -177,9 +194,39 @@ const ScanSchema = new Schema(
       type: Schema.Types.Mixed,
       default: null,
     },
+
+    errorMessage: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
+  },
+)
+
+/*
+ * Critical part of the fix:
+ *
+ * One user cannot create two records for the
+ * same logical scan request.
+ *
+ * The index is partial because older MongoDB
+ * records don't have scanRequestId.
+ */
+ScanSchema.index(
+  {
+    userId: 1,
+    scanRequestId: 1,
+  },
+  {
+    unique: true,
+
+    partialFilterExpression: {
+      scanRequestId: {
+        $type: 'string',
+      },
+    },
   },
 )
 
