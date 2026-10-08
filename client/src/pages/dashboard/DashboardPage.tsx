@@ -9,13 +9,20 @@ import './DashboardPage.css'
 export default function DashboardPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [historyOpen, setHistoryOpen] = useState(false)
 
-  // The header's "History" link asks for the dialog through router state.
+  const [historyOpen, setHistoryOpen] =
+    useState(false)
+
+  // The header's "History" link asks for the dialog
+  // through router state.
   useEffect(() => {
     if (location.state?.openHistory) {
       setHistoryOpen(true)
-      navigate('/dashboard', { replace: true, state: null })
+
+      navigate('/dashboard', {
+        replace: true,
+        state: null,
+      })
     }
   }, [location.state, navigate])
 
@@ -23,9 +30,10 @@ export default function DashboardPage() {
     <main className="page dashboard">
       <header className="dashboard-head">
         <h1>Inspect a file</h1>
+
         <p>
-          Check a PDF, DOCX or image before you open it or give it to an AI
-          tool.
+          Check a PDF, DOCX or image before you
+          open it or give it to an AI tool.
         </p>
       </header>
 
@@ -34,6 +42,12 @@ export default function DashboardPage() {
           navigate('/scan', {
             state: {
               file,
+
+              // One UUID represents ONE logical scan.
+              // React StrictMode remounts will reuse
+              // this same ID.
+              scanRequestId:
+                crypto.randomUUID(),
             },
           })
         }
@@ -41,8 +55,12 @@ export default function DashboardPage() {
 
       <RecentScans
         historyOpen={historyOpen}
-        onOpenHistory={() => setHistoryOpen(true)}
-        onCloseHistory={() => setHistoryOpen(false)}
+        onOpenHistory={() =>
+          setHistoryOpen(true)
+        }
+        onCloseHistory={() =>
+          setHistoryOpen(false)
+        }
       />
 
       <AnalyzerSection />

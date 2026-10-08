@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '@clerk/clerk-react'
+import {
+  useLocation,
+  useNavigate,
+} from 'react-router-dom'
 
 import './ScanPage.css'
 
@@ -7,7 +11,11 @@ interface ScanResult {
   scanId: string
   filename: string
   size: number
-  status: string
+
+  status:
+    | 'analyzing'
+    | 'completed'
+    | 'failed'
 
   fileType: {
     detectedExtension: string | null
@@ -53,13 +61,347 @@ interface ScanResult {
     | 'block'
 }
 
+const API_BASE_URL =
+  'http://localhost:5001'
+
+const POLL_INTERVAL_MS = 1000
+
+const MAX_POLL_ATTEMPTS = 180
+
+/*
+ * React StrictMode can mount, unmount and mount
+ * the component again during development.
+ *
+ * This map makes both mounts reuse the same
+ * in-flight request.
+ *
+ * Backend idempotency remains the real protection.
+ */
+const inFlightScans = new Map<
+  string,
+  Promise<ScanResult>
+>()
+
+function isScanResult(
+  value: unknown,
+): value is ScanResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'scanId' in value &&
+    'status' in value &&
+    (value as { status?: unknown }).status ===
+      'completed'
+  )
+}
+
+/*
+ * Safely parse server responses.
+
+ * This also prevents errors such as:
+ *
+ * Unexpected token '<'
+ *
+ * when the server accidentally returns HTML.
+ */
+async function readJson(
+  response: Response,
+): Promise<unknown> {
+  const text = await response.text()
+
+  if (!text) {
+    return null
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    throw new Error(
+      `Server returned an invalid response (${response.status}).`,
+    )
+  }
+}
+
+/*
+ * If another request already created the scan,
+ * the backend returns 202 + scanId.
+ *
+ * We wait for that existing scan instead of
+ * starting another analysis.
+ */
+async function waitForScanResult(
+  scanId: string,
+  token: string,
+): Promise<ScanResult> {
+  for (
+    let attempt = 0;
+    attempt < MAX_POLL_ATTEMPTS;
+    attempt += 1
+  ) {
+    await new Promise<void>((resolve) => {
+      window.setTimeout(
+        resolve,
+        POLL_INTERVAL_MS,
+      )
+    })
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/scans/${encodeURIComponent(
+        scanId,
+      )}`,
+      {
+        method: 'GET',
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    const data = await readJson(response)
+
+    if (!response.ok) {
+      const message =
+        typeof data === 'object' &&
+        data !== null &&
+        'error' in data &&
+        typeof (
+          data as {
+            error?: unknown
+          }
+        ).error === 'string'
+          ? (
+              data as {
+                error: string
+              }
+            ).error
+          : 'Unable to retrieve the scan result.'
+
+      throw new Error(message)
+    }
+
+    if (isScanResult(data)) {
+      return data
+    }
+
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'status' in data
+    ) {
+      const status = (
+        data as {
+          status?: unknown
+          error?: unknown
+        }
+      ).status
+
+      if (status === 'failed') {
+        const errorMessage = (
+          data as unknown as {
+            error?: unknown
+          }
+        ).error
+
+        throw new Error(
+          typeof errorMessage === 'string'
+            ? errorMessage
+            : 'File analysis failed.',
+        )
+      }
+
+      if (status === 'analyzing') {
+        continue
+      }
+    }
+
+    throw new Error(
+      'The server returned an invalid scan status.',
+    )
+  }
+
+  throw new Error(
+    'The scan is taking longer than expected. Please check the scan history.',
+  )
+}
+
+/*
+ * Performs the actual POST request.
+ */
+async function executeScan(
+  file: File,
+  scanRequestId: string,
+  getToken: () => Promise<string | null>,
+): Promise<ScanResult> {
+  const token = await getToken()
+
+  if (!token) {
+    throw new Error(
+      'Your session has expired. Please sign in again.',
+    )
+  }
+
+  const formData = new FormData()
+
+  formData.append(
+    'file',
+    file,
+  )
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/scans`,
+    {
+      method: 'POST',
+
+      headers: {
+        Authorization: `Bearer ${token}`,
+
+        /*
+         * This identifies the logical scan.
+         */
+        'X-Scan-Request-Id':
+          scanRequestId,
+      },
+
+      body: formData,
+    },
+  )
+
+  const data = await readJson(response)
+
+  /*
+   * Another request already created the scan.
+   *
+   * Don't analyze again. Wait for the existing
+   * scan to finish.
+   */
+  if (response.status === 202) {
+    if (
+      typeof data === 'object' &&
+      data !== null &&
+      'scanId' in data &&
+      typeof (
+        data as {
+          scanId?: unknown
+        }
+      ).scanId === 'string'
+    ) {
+      return waitForScanResult(
+        (
+          data as {
+            scanId: string
+          }
+        ).scanId,
+        token,
+      )
+    }
+
+    throw new Error(
+      'The server did not return a scan ID.',
+    )
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === 'object' &&
+      data !== null &&
+      'error' in data &&
+      typeof (
+        data as {
+          error?: unknown
+        }
+      ).error === 'string'
+        ? (
+            data as {
+              error: string
+            }
+          ).error
+        : 'Scan failed.'
+
+    throw new Error(message)
+  }
+
+  if (!isScanResult(data)) {
+    throw new Error(
+      'The server returned an invalid scan result.',
+    )
+  }
+
+  return data
+}
+
+/*
+ * Reuse an existing request for the same
+ * scanRequestId.
+ *
+ * This specifically protects the frontend
+ * from React StrictMode duplicate effects.
+ */
+function requestScan(
+  file: File,
+  scanRequestId: string,
+  getToken: () => Promise<string | null>,
+): Promise<ScanResult> {
+  const existing =
+    inFlightScans.get(scanRequestId)
+
+  if (existing) {
+    return existing
+  }
+
+  const promise = executeScan(
+    file,
+    scanRequestId,
+    getToken,
+  )
+
+  inFlightScans.set(
+    scanRequestId,
+    promise,
+  )
+
+  void promise.then(
+    () => {
+      if (
+        inFlightScans.get(scanRequestId) ===
+        promise
+      ) {
+        inFlightScans.delete(
+          scanRequestId,
+        )
+      }
+    },
+
+    () => {
+      if (
+        inFlightScans.get(scanRequestId) ===
+        promise
+      ) {
+        inFlightScans.delete(
+          scanRequestId,
+        )
+      }
+    },
+  )
+
+  return promise
+}
+
 export default function ScanPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const { getToken } = useAuth()
+
   const file =
     location.state?.file instanceof File
       ? location.state.file
+      : null
+
+  const scanRequestId =
+    typeof location.state?.scanRequestId ===
+    'string'
+      ? location.state.scanRequestId
       : null
 
   const [result, setResult] =
@@ -72,7 +414,9 @@ export default function ScanPage() {
     useState<string | null>(null)
 
   useEffect(() => {
-    if (!file) return
+    if (!file || !scanRequestId) {
+      return
+    }
 
     let cancelled = false
 
@@ -80,34 +424,16 @@ export default function ScanPage() {
       setLoading(true)
       setError(null)
 
-      const formData = new FormData()
-
-      formData.append(
-        'file',
-        file,
-      )
-
       try {
-        const response = await fetch(
-          'http://localhost:5001/api/scans',
-          {
-            method: 'POST',
-            body: formData,
-          },
-        )
-
-        const data =
-          await response.json()
-
-        if (!response.ok) {
-          throw new Error(
-            data.error ??
-              'Scan failed.',
+        const scanResult =
+          await requestScan(
+            file,
+            scanRequestId,
+            getToken,
           )
-        }
 
         if (!cancelled) {
-          setResult(data)
+          setResult(scanResult)
         }
       } catch (scanError) {
         if (!cancelled) {
@@ -129,13 +455,17 @@ export default function ScanPage() {
     return () => {
       cancelled = true
     }
-  }, [file])
+  }, [
+    file,
+    scanRequestId,
+    getToken,
+  ])
 
   // --------------------------------
-  // No file selected
+  // No file
   // --------------------------------
 
-  if (!file) {
+  if (!file || !scanRequestId) {
     return (
       <main className="page scan-page">
         <h1>No file selected</h1>
@@ -169,15 +499,13 @@ export default function ScanPage() {
 
         <p>
           SENTINEL is inspecting{' '}
-          <strong>
-            {file.name}
-          </strong>.
+          <strong>{file.name}</strong>.
         </p>
 
         <p>
-          Checking file type,
-          SHA-256 fingerprint,
-          and antivirus signals...
+          Checking file type, SHA-256
+          fingerprint, antivirus signals, and
+          deep file content...
         </p>
       </main>
     )
@@ -207,7 +535,13 @@ export default function ScanPage() {
     )
   }
 
-  if (!result) return null
+  if (!result) {
+    return null
+  }
+
+  // --------------------------------
+  // Result
+  // --------------------------------
 
   return (
     <main className="page scan-page">
@@ -218,10 +552,6 @@ export default function ScanPage() {
           {result.filename}
         </strong>
       </p>
-
-      {/* --------------------------------
-          Risk
-      -------------------------------- */}
 
       <section>
         <h2>Risk</h2>
@@ -248,10 +578,6 @@ export default function ScanPage() {
         </p>
       </section>
 
-      {/* --------------------------------
-          File verification
-      -------------------------------- */}
-
       <section>
         <h2>File verification</h2>
 
@@ -275,10 +601,6 @@ export default function ScanPage() {
         </p>
       </section>
 
-      {/* --------------------------------
-          SHA-256
-      -------------------------------- */}
-
       <section>
         <h2>SHA-256</h2>
 
@@ -286,10 +608,6 @@ export default function ScanPage() {
           {result.hash.value}
         </code>
       </section>
-
-      {/* --------------------------------
-          Antivirus
-      -------------------------------- */}
 
       <section>
         <h2>Antivirus</h2>
@@ -304,10 +622,6 @@ export default function ScanPage() {
           {result.antivirus.details}
         </p>
       </section>
-
-      {/* --------------------------------
-          Evidence
-      -------------------------------- */}
 
       <section>
         <h2>Evidence</h2>
@@ -333,10 +647,6 @@ export default function ScanPage() {
           </ul>
         )}
       </section>
-
-      {/* --------------------------------
-          Back
-      -------------------------------- */}
 
       <button
         type="button"
