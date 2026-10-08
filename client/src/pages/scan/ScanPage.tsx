@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  ShieldCheck,
+  FileCheck2,
+  Fingerprint,
+  ShieldAlert,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  ArrowLeft,
+  FileText,
+  ScanSearch,
+} from 'lucide-react'
 
 import './ScanPage.css'
 
@@ -38,19 +50,12 @@ interface ScanResult {
     score: number
   }[]
 
-  risk: {
-    score: number
-    level:
-      | 'low'
-      | 'medium'
-      | 'high'
-      | 'critical'
+  risk?: {
+    score?: number
+    level?: 'low' | 'medium' | 'high' | 'critical'
   }
 
-  recommendation:
-    | 'allow'
-    | 'review'
-    | 'block'
+  recommendation?: 'allow' | 'review' | 'block'
 }
 
 export default function ScanPage() {
@@ -82,10 +87,7 @@ export default function ScanPage() {
 
       const formData = new FormData()
 
-      formData.append(
-        'file',
-        file,
-      )
+      formData.append('file', file)
 
       try {
         const response = await fetch(
@@ -96,13 +98,11 @@ export default function ScanPage() {
           },
         )
 
-        const data =
-          await response.json()
+        const data = await response.json()
 
         if (!response.ok) {
           throw new Error(
-            data.error ??
-              'Scan failed.',
+            data.error ?? 'Scan failed.',
           )
         }
 
@@ -138,22 +138,25 @@ export default function ScanPage() {
   if (!file) {
     return (
       <main className="page scan-page">
-        <h1>No file selected</h1>
+        <div className="scan-state-card">
+          <FileText size={42} />
 
-        <p>
-          Return to the dashboard and choose
-          a file to scan.
-        </p>
+          <h1>No file selected</h1>
 
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() =>
-            navigate('/dashboard')
-          }
-        >
-          Back to dashboard
-        </button>
+          <p>
+            Return to the dashboard and choose
+            a file to scan.
+          </p>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => navigate('/dashboard')}
+          >
+            <ArrowLeft size={17} />
+            Back to dashboard
+          </button>
+        </div>
       </main>
     )
   }
@@ -165,20 +168,27 @@ export default function ScanPage() {
   if (loading) {
     return (
       <main className="page scan-page">
-        <h1>Analyzing file</h1>
+        <div className="scan-state-card">
+          <div className="scan-loader">
+            <ScanSearch size={38} />
+          </div>
 
-        <p>
-          SENTINEL is inspecting{' '}
-          <strong>
-            {file.name}
-          </strong>.
-        </p>
+          <h1>Analyzing file</h1>
 
-        <p>
-          Checking file type,
-          SHA-256 fingerprint,
-          and antivirus signals...
-        </p>
+          <p>
+            SENTINEL is inspecting{' '}
+            <strong>{file.name}</strong>.
+          </p>
+
+          <div className="scan-progress">
+            <span />
+          </div>
+
+          <small>
+            Checking file type, SHA-256 fingerprint,
+            and antivirus signals...
+          </small>
+        </div>
       </main>
     )
   }
@@ -190,163 +200,426 @@ export default function ScanPage() {
   if (error) {
     return (
       <main className="page scan-page">
-        <h1>Scan failed</h1>
+        <div className="scan-state-card error-state">
+          <XCircle size={42} />
 
-        <p>{error}</p>
+          <h1>Scan failed</h1>
 
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() =>
-            navigate('/dashboard')
-          }
-        >
-          Back to dashboard
-        </button>
+          <p>{error}</p>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => navigate('/dashboard')}
+          >
+            <ArrowLeft size={17} />
+            Back to dashboard
+          </button>
+        </div>
       </main>
     )
   }
 
   if (!result) return null
 
+  // --------------------------------
+  // Safe values
+  // --------------------------------
+
+  const riskScore =
+    typeof result.risk?.score === 'number'
+      ? result.risk.score
+      : 0
+
+  const riskLevel =
+    result.risk?.level ?? 'unknown'
+
+  const recommendation =
+    result.recommendation ?? 'review'
+
+  const riskLabel =
+    riskLevel === 'unknown'
+      ? 'Unknown'
+      : riskLevel.charAt(0).toUpperCase() +
+        riskLevel.slice(1)
+
+  const recommendationLabel =
+    recommendation.charAt(0).toUpperCase() +
+    recommendation.slice(1)
+
+  const riskClass =
+    riskLevel === 'low'
+      ? 'risk-low'
+      : riskLevel === 'medium'
+        ? 'risk-medium'
+        : riskLevel === 'high'
+          ? 'risk-high'
+          : riskLevel === 'critical'
+            ? 'risk-critical'
+            : 'risk-unknown'
+
+  const RecommendationIcon =
+    recommendation === 'allow'
+      ? CheckCircle2
+      : recommendation === 'block'
+        ? XCircle
+        : AlertTriangle
+
   return (
     <main className="page scan-page">
-      <h1>Scan complete</h1>
-
-      <p>
-        <strong>
-          {result.filename}
-        </strong>
-      </p>
 
       {/* --------------------------------
-          Risk
+          Header
       -------------------------------- */}
 
-      <section>
-        <h2>Risk</h2>
+      <header className="scan-header">
+        <div>
+          <div className="scan-header-label">
+            <ShieldCheck size={17} />
+            SENTINEL SECURITY SCAN
+          </div>
 
-        <p>
-          Risk score:{' '}
-          <strong>
-            {result.risk.score}/100
-          </strong>
-        </p>
+          <h1>Security Result</h1>
 
-        <p>
-          Risk level:{' '}
-          <strong>
-            {result.risk.level.toUpperCase()}
-          </strong>
-        </p>
+          <p>
+            Analysis completed for{' '}
+            <strong>{result.filename}</strong>
+          </p>
+        </div>
 
-        <p>
-          Recommendation:{' '}
-          <strong>
-            {result.recommendation.toUpperCase()}
-          </strong>
-        </p>
+        <div className="scan-status-badge">
+          <CheckCircle2 size={16} />
+          Scan Complete
+        </div>
+      </header>
+
+
+      {/* --------------------------------
+          Main risk card
+      -------------------------------- */}
+
+      <section className={`risk-card ${riskClass}`}>
+
+        <div className="risk-card-top">
+
+          <div>
+            <span className="section-eyebrow">
+              OVERALL SECURITY RISK
+            </span>
+
+            <div className="risk-score">
+              {riskScore}
+              <span>/100</span>
+            </div>
+
+            <div className="risk-level">
+              <ShieldAlert size={18} />
+              {riskLabel} Risk
+            </div>
+          </div>
+
+          <div className="risk-icon">
+            <ShieldCheck size={54} />
+          </div>
+
+        </div>
+
+        <div className="risk-bar">
+          <span
+            style={{
+              width: `${Math.min(
+                Math.max(riskScore, 0),
+                100,
+              )}%`,
+            }}
+          />
+        </div>
+
+        <div className="recommendation">
+          <div className="recommendation-icon">
+            <RecommendationIcon size={21} />
+          </div>
+
+          <div>
+            <span>RECOMMENDATION</span>
+            <strong>
+              {recommendationLabel}
+            </strong>
+          </div>
+        </div>
+
       </section>
 
+
       {/* --------------------------------
-          File verification
+          Two information cards
       -------------------------------- */}
 
-      <section>
-        <h2>File verification</h2>
+      <div className="scan-grid">
 
-        <p>
-          Detected type:{' '}
-          {result.fileType.detectedType ??
-            'Unknown'}
+        {/* File Verification */}
+
+        <section className="scan-card">
+
+          <div className="card-heading">
+            <div className="card-icon">
+              <FileCheck2 size={20} />
+            </div>
+
+            <div>
+              <span>FILE SECURITY</span>
+              <h2>File Verification</h2>
+            </div>
+          </div>
+
+          <div className="info-list">
+
+            <div className="info-row">
+              <span>Detected type</span>
+              <strong>
+                {result.fileType.detectedType ??
+                  'Unknown'}
+              </strong>
+            </div>
+
+            <div className="info-row">
+              <span>MIME type</span>
+              <strong>
+                {result.fileType.detectedMime ??
+                  'Unknown'}
+              </strong>
+            </div>
+
+            <div className="info-row">
+              <span>Extension</span>
+              <strong>
+                {result.fileType.detectedExtension ??
+                  'Unknown'}
+              </strong>
+            </div>
+
+            <div className="info-row">
+              <span>Extension mismatch</span>
+
+              <strong
+                className={
+                  result.fileType.extensionMismatch
+                    ? 'danger-text'
+                    : 'success-text'
+                }
+              >
+                {result.fileType.extensionMismatch
+                  ? 'Detected'
+                  : 'None'}
+              </strong>
+            </div>
+
+          </div>
+
+        </section>
+
+
+        {/* Antivirus */}
+
+        <section className="scan-card">
+
+          <div className="card-heading">
+            <div className="card-icon">
+              <ShieldCheck size={20} />
+            </div>
+
+            <div>
+              <span>MALWARE CHECK</span>
+              <h2>Antivirus</h2>
+            </div>
+          </div>
+
+          <div className="antivirus-status">
+
+            <div
+              className={
+                result.antivirus.available
+                  ? 'av-icon av-safe'
+                  : 'av-icon av-warning'
+              }
+            >
+              {result.antivirus.available ? (
+                <CheckCircle2 size={25} />
+              ) : (
+                <AlertTriangle size={25} />
+              )}
+            </div>
+
+            <div>
+              <strong>
+                {result.antivirus.available
+                  ? result.antivirus.status
+                  : 'Unavailable'}
+              </strong>
+
+              <span>
+                {result.antivirus.engine}
+              </span>
+            </div>
+
+          </div>
+
+          <p className="card-description">
+            {result.antivirus.details}
+          </p>
+
+        </section>
+
+      </div>
+
+
+      {/* --------------------------------
+          Fingerprint
+      -------------------------------- */}
+
+      <section className="scan-card fingerprint-card">
+
+        <div className="card-heading">
+
+          <div className="card-icon">
+            <Fingerprint size={20} />
+          </div>
+
+          <div>
+            <span>FILE IDENTITY</span>
+            <h2>File Fingerprint</h2>
+          </div>
+
+        </div>
+
+        <p className="fingerprint-description">
+          Cryptographic fingerprint generated for
+          this file using {result.hash.algorithm}.
         </p>
 
-        <p>
-          MIME:{' '}
-          {result.fileType.detectedMime ??
-            'Unknown'}
-        </p>
+        <div className="hash-box">
+          <code>{result.hash.value}</code>
+        </div>
 
-        <p>
-          Extension mismatch:{' '}
-          {result.fileType.extensionMismatch
-            ? 'Yes'
-            : 'No'}
-        </p>
       </section>
 
-      {/* --------------------------------
-          SHA-256
-      -------------------------------- */}
-
-      <section>
-        <h2>SHA-256</h2>
-
-        <code>
-          {result.hash.value}
-        </code>
-      </section>
 
       {/* --------------------------------
-          Antivirus
+          Security Evidence
       -------------------------------- */}
 
-      <section>
-        <h2>Antivirus</h2>
+      <section className="scan-card evidence-card">
 
-        <p>
-          {result.antivirus.available
-            ? result.antivirus.status
-            : 'Unavailable'}
-        </p>
+        <div className="card-heading">
 
-        <p>
-          {result.antivirus.details}
-        </p>
-      </section>
+          <div className="card-icon">
+            <ShieldAlert size={20} />
+          </div>
 
-      {/* --------------------------------
-          Evidence
-      -------------------------------- */}
+          <div>
+            <span>ANALYSIS OUTPUT</span>
+            <h2>Security Evidence</h2>
+          </div>
 
-      <section>
-        <h2>Evidence</h2>
+          <div className="evidence-count">
+            {result.evidence.length}
+          </div>
+
+        </div>
 
         {result.evidence.length === 0 ? (
-          <p>
-            No security findings were
-            generated by the current
-            analyzers.
-          </p>
+
+          <div className="no-evidence">
+            <CheckCircle2 size={24} />
+
+            <div>
+              <strong>No security findings</strong>
+              <p>
+                No suspicious findings were generated
+                by the current analyzers.
+              </p>
+            </div>
+          </div>
+
         ) : (
-          <ul>
-            {result.evidence.map(
-              (item) => (
-                <li key={item.id}>
-                  <strong>
-                    {item.title}
-                  </strong>{' '}
-                  — {item.description}
-                </li>
-              ),
-            )}
-          </ul>
+
+          <div className="evidence-list">
+
+            {result.evidence.map((item) => (
+
+              <article
+                className="evidence-item"
+                key={item.id}
+              >
+
+                <div className="evidence-marker">
+                  <ShieldAlert size={18} />
+                </div>
+
+                <div className="evidence-content">
+
+                  <div className="evidence-title-row">
+                    <strong>
+                      {item.title}
+                    </strong>
+
+                    <span className="severity-badge">
+                      {item.severity}
+                    </span>
+                  </div>
+
+                  <p>
+                    {item.description}
+                  </p>
+
+                  <div className="evidence-meta">
+                    <span>
+                      Category: {item.category}
+                    </span>
+
+                    <span>
+                      Source: {item.source}
+                    </span>
+
+                    <span>
+                      Score: {item.score}
+                    </span>
+                  </div>
+
+                </div>
+
+              </article>
+
+            ))}
+
+          </div>
+
         )}
+
       </section>
 
+
       {/* --------------------------------
-          Back
+          Footer
       -------------------------------- */}
 
-      <button
-        type="button"
-        className="btn btn-primary"
-        onClick={() =>
-          navigate('/dashboard')
-        }
-      >
-        Back to dashboard
-      </button>
+      <div className="scan-footer">
+
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => navigate('/dashboard')}
+        >
+          <ArrowLeft size={17} />
+          Back to dashboard
+        </button>
+
+        <span>
+          Scan ID: {result.scanId}
+        </span>
+
+      </div>
+
     </main>
   )
 }
