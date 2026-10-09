@@ -1,3 +1,4 @@
+
 import mongoose, {
     Schema,
     type InferSchemaType,
@@ -194,7 +195,20 @@ const ScanSchema = new Schema(
             type: Schema.Types.Mixed,
             default: null,
         },
+
         exeAnalysis: {
+            type: Schema.Types.Mixed,
+            default: null,
+        },
+
+        /*
+         * DOCX/DOCM static-analysis observations.
+         *
+         * Mixed matches the existing PDF and EXE
+         * storage strategy and avoids changing
+         * the structure of existing scan records.
+         */
+        docxAnalysis: {
             type: Schema.Types.Mixed,
             default: null,
         },

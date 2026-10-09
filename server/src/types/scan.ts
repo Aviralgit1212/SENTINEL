@@ -71,6 +71,9 @@ export interface ScanResult {
 
     /** Facts extracted from a Windows PE/EXE file, when applicable. */
     exeAnalysis?: ExeFacts
+
+    /** Static observations extracted from a DOCX/DOCM file, when applicable. */
+    docxAnalysis?: DocxFacts
 }
 
 /**
@@ -262,4 +265,54 @@ export interface ExeFacts {
     hasCertificateTable: boolean
     overlaySize: number
     highEntropySections: string[]
+}
+
+/**
+ * Static observations extracted from a DOCX/DOCM package.
+ *
+ * These are facts and heuristic indicators, not a definitive
+ * malware verdict. Risk scoring belongs in the evidence pipeline.
+ */
+export interface DocxFacts {
+    supported: boolean
+    error?: string
+
+    fileSize: number
+    entryCount: number
+    uncompressedSize: number
+    textLength: number
+
+    hiddenTextCount: number
+    hiddenTextFindings: Array<{
+        text: string
+        reasons: string[]
+        contentSignals: string[]
+        part?: string
+    }>
+
+    urls: string[]
+
+    externalRelationships: Array<{
+        source: string
+        target: string
+        relationshipType?: string
+    }>
+
+    embeddedObjects: Array<{
+        name: string
+        size?: number
+        isExecutableLike?: boolean
+    }>
+
+    macroParts: string[]
+
+    suspiciousIndicators: string[]
+
+    packageWarnings: string[]
+
+    partCounts: Record<string, number>
+
+    hasComments: boolean
+    hasTrackedChanges: boolean
+    hasExternalTemplate: boolean
 }
