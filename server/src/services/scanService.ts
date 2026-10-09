@@ -1,4 +1,3 @@
-
 import { randomUUID } from 'node:crypto'
 import type { Express } from 'express'
 
@@ -14,6 +13,12 @@ import { buildExeEvidence } from './exeEvidenceBuilder.js'
 
 import { analyzeDocx } from './docxAnalyzer.js'
 import { buildDocxEvidence } from './docxEvidenceBuilder.js'
+
+import { analyzeJsonFile } from './jsonAnalyzer.js'
+import {
+  buildJsonEvidence,
+  recommendationForJson,
+} from './jsonEvidenceBuilder.js'
 
 import { Scan } from '../models/Scan.js'
 
@@ -142,6 +147,10 @@ function documentToScanResult(
     docxAnalysis:
       scan.docxAnalysis ??
       undefined,
+
+    jsonAnalysis:
+      scan.jsonAnalysis ??
+      undefined,
   }
 }
 
@@ -171,9 +180,6 @@ export async function analyzeFile(
 ): Promise<ScanRequestResult> {
   /*
    * 1. Cheap deterministic analysis.
-   *
-   * These operations do not create database
-   * records or start deep analysis.
    */
 
   const fileType =
@@ -193,9 +199,8 @@ export async function analyzeFile(
   /*
    * 2. Reserve the logical scan.
    *
-   * The MongoDB unique index on userId +
-   * scanRequestId ensures that only one
-   * request owns this logical scan.
+   * Preserve the existing unique-request
+   * and duplicate-request handling.
    */
 
   try {
@@ -262,6 +267,9 @@ export async function analyzeFile(
         null,
 
       docxAnalysis:
+        null,
+
+      jsonAnalysis:
         null,
     })
   } catch (error) {
@@ -332,7 +340,7 @@ export async function analyzeFile(
     /*
      * 3. Antivirus scan.
      *
-     * Preserve the existing ClamAV integration.
+     * Existing ClamAV integration is unchanged.
      */
 
     const antivirus =
@@ -342,9 +350,6 @@ export async function analyzeFile(
 
     /*
      * 4. Deep PDF analysis.
-     *
-     * Keep PDF analysis independent from
-     * EXE and DOCX analysis.
      */
 
     const pdfAnalysis =
@@ -358,10 +363,7 @@ export async function analyzeFile(
     /*
      * 5. Static EXE analysis.
      *
-     * Analyze files detected as EXEs and
-     * files whose names end in .exe.
-     *
-     * The analyzer must never execute the file.
+     * Never execute the uploaded file.
      */
 
     const hasExeExtension =
@@ -382,15 +384,7 @@ export async function analyzeFile(
         : null
 
     /*
-     * 6. Static DOCX analysis.
-     *
-     * Analyze files detected as DOCX/DOCM
-     * and files named .docx or .docm,
-     * even when their detected file type differs.
-     *
-     * This supports extension-spoofing checks.
-     * The Python analyzer must treat the document
-     * as data and must never execute its contents.
+     * 6. Static DOCX/DOCM analysis.
      */
 
     const hasDocxExtension =
@@ -413,7 +407,36 @@ export async function analyzeFile(
         : null
 
     /*
-     * 7. Build security evidence.
+     * 7. Static JSON analysis.
+     *
+     * Analyze files detected as JSON and files
+     * named .json, even if their detected type
+     * differs. This also allows malformed or
+     * extension-spoofed JSON files to be reviewed.
+     *
+     * The Python analyzer treats file contents
+     * as data. It must never execute the contents.
+     */
+
+    const hasJsonExtension =
+      /\.json$/i.test(
+        file.originalname,
+      )
+
+    const shouldAnalyzeJson =
+      fileType.detectedExtension ===
+        'json' ||
+      hasJsonExtension
+
+    const jsonAnalysis =
+      shouldAnalyzeJson
+        ? await analyzeJsonFile(
+            file.path,
+          )
+        : null
+
+    /*
+     * 8. Build security evidence.
      */
 
     const evidence: Evidence[] =
@@ -548,12 +571,22 @@ export async function analyzeFile(
     }
 
     /*
-     * 8. Calculate risk using the existing
-     * shared evidence pipeline.
+     * JSON evidence.
+     */
+
+    if (jsonAnalysis) {
+      evidence.push(
+        ...buildJsonEvidence(
+          jsonAnalysis,
+        ),
+      )
+    }
+
+    /*
+     * 9. Shared risk scoring.
      *
-     * DOCX evidence contributes to the same
-     * risk score as PDF, EXE, antivirus, and
-     * file-type evidence.
+     * JSON evidence joins the existing evidence
+     * array. The shared risk calculator is unchanged.
      */
 
     const riskScore =
@@ -599,19 +632,9 @@ export async function analyzeFile(
         : scoreRecommendation
 
     /*
-     * 9. EXE-specific verdict policy.
+     * 10. EXE-specific verdict policy.
      *
-     * Preserve the existing EXE policy:
-     *
-     * Block:
-     *   ClamAV explicitly detected a threat.
-     *
-     * Review:
-     *   AV did not confirm a clean scan,
-     *   analysis is unsupported, an extension
-     *   mismatch exists, structural warnings
-     *   exist, high-severity EXE evidence exists,
-     *   or the risk score is elevated.
+     * Existing EXE policy is preserved.
      */
 
     const hasHighSeverityExeEvidence =
@@ -629,22 +652,9 @@ export async function analyzeFile(
       )
 
     /*
-     * 10. DOCX-specific verdict policy.
+     * 11. DOCX-specific verdict policy.
      *
-     * Block:
-     *   ClamAV explicitly detected a threat.
-     *
-     * Review:
-     *   AV is not clean, analysis is unsupported,
-     *   file type mismatch exists, DOCX analysis
-     *   finds high-severity evidence, package
-     *   warnings, hidden text, embedded objects,
-     *   macro parts, external templates, suspicious
-     *   indicators, or an elevated risk score.
-     *
-     * A clean DOCX with no review indicators can
-     * be allowed under this policy. This is not
-     * a guarantee that the document is safe.
+     * Existing DOCX policy is preserved.
      */
 
     const hasHighSeverityDocxEvidence =
@@ -689,14 +699,34 @@ export async function analyzeFile(
               : 'allow'
 
     /*
-     * Final recommendation.
+     * 12. JSON-specific verdict policy.
      *
-     * Priority:
-     *   1. Existing EXE-specific policy.
-     *   2. DOCX-specific policy.
-     *   3. Existing general risk policy.
+     * This uses the existing JSON evidence
+     * and recommendation helpers.
      *
-     * PDF recommendation behavior remains unchanged.
+     * Explicit ClamAV threat -> block.
+     * Unsupported/incomplete JSON analysis,
+     * suspicious findings, extension mismatch,
+     * non-clean AV status, or elevated risk
+     * -> review.
+     */
+
+    const jsonRecommendation =
+      jsonAnalysis
+        ? recommendationForJson(
+            jsonAnalysis,
+            antivirus.status,
+            fileType.extensionMismatch,
+            riskScore,
+          )
+        : recommendation
+
+    /*
+     * 13. Final recommendation.
+     *
+     * Preserve existing EXE and DOCX priority.
+     * JSON policy applies to JSON scans.
+     * Other file types use the existing policy.
      */
 
     const finalRecommendation =
@@ -719,10 +749,12 @@ export async function analyzeFile(
           )
         : shouldAnalyzeDocx
           ? docxRecommendation
-          : recommendation
+          : shouldAnalyzeJson
+            ? jsonRecommendation
+            : recommendation
 
     /*
-     * 11. Build final result.
+     * 14. Build final result.
      */
 
     const result: ScanResult = {
@@ -919,6 +951,9 @@ export async function analyzeFile(
       docxAnalysis:
         docxAnalysis ?? undefined,
 
+      jsonAnalysis:
+        jsonAnalysis ?? undefined,
+
       evidence,
 
       risk,
@@ -928,9 +963,9 @@ export async function analyzeFile(
     }
 
     /*
-     * 12. Update the reserved document.
+     * 15. Update the reserved MongoDB document.
      *
-     * Do not create a second document.
+     * No second scan document is created.
      */
 
     await Scan.updateOne(
@@ -972,6 +1007,10 @@ export async function analyzeFile(
             result.docxAnalysis ??
             null,
 
+          jsonAnalysis:
+            result.jsonAnalysis ??
+            null,
+
           errorMessage:
             null,
         },
@@ -989,8 +1028,8 @@ export async function analyzeFile(
     }
   } catch (error) {
     /*
-     * If analysis fails after reservation,
-     * mark the same MongoDB document failed.
+     * Mark the reserved document as failed
+     * if analysis fails after reservation.
      */
 
     const errorMessage =

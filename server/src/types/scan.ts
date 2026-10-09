@@ -1,4 +1,3 @@
-
 export type ScanStatus =
     | 'analyzing'
     | 'completed'
@@ -74,6 +73,52 @@ export interface ScanResult {
 
     /** Static observations extracted from a DOCX/DOCM file, when applicable. */
     docxAnalysis?: DocxFacts
+
+    /** Static observations extracted from a JSON file, when applicable. */
+    jsonAnalysis?: JsonFacts
+}
+
+/**
+ * Facts extracted from a JSON file.
+ *
+ * These are static observations and heuristic indicators,
+ * not a definitive malware verdict. Risk scoring and recommendations
+ * belong in the evidence pipeline.
+ */
+export interface JsonFacts {
+    ok: boolean
+    supported: boolean
+    error: string | null
+
+    fileSize: number
+
+    topLevelType?: string
+    nodeCount?: number
+    stringCount?: number
+    maxDepth?: number
+
+    duplicateKeyCount?: number
+    duplicateKeyExamples?: string[]
+
+    urls?: string[]
+    ipAddresses?: string[]
+
+    promptInjectionCount?: number
+    promptInjectionTypes?: string[]
+
+    secretIndicators?: string[]
+
+    sensitiveKeyCount?: number
+    sensitiveKeyExamples?: string[]
+
+    dangerousKeyCount?: number
+    dangerousKeyExamples?: string[]
+
+    htmlScriptLikeCount?: number
+
+    suspiciousIndicators?: string[]
+
+    analysisTruncated?: boolean
 }
 
 /**
