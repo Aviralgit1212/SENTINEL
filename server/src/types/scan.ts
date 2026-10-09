@@ -1,3 +1,4 @@
+
 export type ScanStatus =
     | 'analyzing'
     | 'completed'
@@ -67,6 +68,9 @@ export interface ScanResult {
         | 'block'
 
     pdfAnalysis?: PdfFacts
+
+    /** Facts extracted from a Windows PE/EXE file, when applicable. */
+    exeAnalysis?: ExeFacts
 }
 
 /**
@@ -96,7 +100,6 @@ export interface PdfFacts {
         items: PdfHiddenTextFinding[]
     }
 }
-
 
 export interface PdfHiddenTextFinding {
     page: number
@@ -227,4 +230,36 @@ export interface PdfOpenAction {
     rawType: string | null
 
     target: string | null
+}
+
+export interface ExeFacts {
+    supported: boolean
+    error?: string
+    fileSize: number
+    sha256: string
+    architecture: 'x86' | 'x64' | 'arm64' | null
+    machine: string | null
+    subsystem: number | null
+    entryPointRva: number | null
+    sectionCount: number
+    sections: Array<{
+        name: string
+        virtualSize: number
+        rawSize: number
+        entropy: number
+        executable: boolean
+        writable: boolean
+        readable: boolean
+        rawRangeValid?: boolean
+    }>
+    structuralWarnings?: string[]
+    imports: Array<{ dll: string; functions: string[] }>
+    suspiciousImports: Array<{ dll: string; function: string }>
+    strings: string[]
+    urls: string[]
+    ipAddresses: string[]
+    suspiciousIndicators: string[]
+    hasCertificateTable: boolean
+    overlaySize: number
+    highEntropySections: string[]
 }

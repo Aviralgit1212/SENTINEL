@@ -6,801 +6,886 @@ import { detectFileType } from './fileTypeService.js'
 import { scanWithClamAV } from './clamAvService.js'
 import { analyzePdf } from './pdfAnalyzer.js'
 import { buildPdfEvidence } from './pdfEvidenceBuilder.js'
+import { analyzeExe } from './exeAnalyzer.js'
+import { buildExeEvidence } from './exeEvidenceBuilder.js'
 
 import { Scan } from '../models/Scan.js'
 
 import {
-    calculateRisk,
-    createEvidence,
-    recommendationForRisk,
-    riskLevelFromScore,
+  calculateRisk,
+  createEvidence,
+  recommendationForRisk,
+  riskLevelFromScore,
 } from '../utils/evidence.js'
 
 import type {
-    Evidence,
-    ScanResult,
+  Evidence,
+  ScanResult,
 } from '../types/scan.js'
 
 export type ScanRequestResult =
-    | {
-        status: 'completed'
-        result: ScanResult
-        created: boolean
+  | {
+      status: 'completed'
+      result: ScanResult
+      created: boolean
     }
-    | {
-        status: 'analyzing'
-        scanId: string
-        created: false
+  | {
+      status: 'analyzing'
+      scanId: string
+      created: false
     }
-    | {
-        status: 'failed'
-        scanId: string
-        error: string
-        created: false
+  | {
+      status: 'failed'
+      scanId: string
+      error: string
+      created: false
     }
 
 function isDuplicateKeyError(
-    error: unknown,
+  error: unknown,
 ): boolean {
-    return (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        (
-            error as {
-                code?: unknown
-            }
-        ).code === 11000
-    )
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (
+      error as {
+        code?: unknown
+      }
+    ).code === 11000
+  )
 }
 
 function documentToScanResult(
-    scan: Record<string, any>,
+  scan: Record<string, any>,
 ): ScanResult {
-    return {
-        scanId: scan.scanId,
+  return {
+    scanId: scan.scanId,
 
-        filename:
-            scan.filename,
+    filename:
+      scan.filename,
 
-        size:
-            scan.size,
+    size:
+      scan.size,
 
-        status:
-            scan.status,
+    status:
+      scan.status,
 
-        fileType: {
-            detectedExtension:
-                scan.detectedExtension ??
-                null,
+    fileType: {
+      detectedExtension:
+        scan.detectedExtension ??
+        null,
 
-            detectedMime:
-                scan.mimeType ??
-                null,
+      detectedMime:
+        scan.mimeType ??
+        null,
 
-            detectedType:
-                scan.detectedExtension ??
-                null,
+      detectedType:
+        scan.detectedExtension ??
+        null,
 
-            extensionMismatch:
-                Boolean(
-                    scan.extensionMismatch,
-                ),
-        },
+      extensionMismatch:
+        Boolean(
+          scan.extensionMismatch,
+        ),
+    },
 
-        hash: {
-            algorithm: 'sha256',
+    hash: {
+      algorithm: 'sha256',
 
-            value:
-                scan.sha256,
-        },
+      value:
+        scan.sha256,
+    },
 
-        antivirus: {
-            engine:
-                scan.antivirus?.engine ??
-                'clamav',
+    antivirus: {
+      engine:
+        scan.antivirus?.engine ??
+        'clamav',
 
-            available:
-                Boolean(
-                    scan.antivirus?.available,
-                ),
+      available:
+        Boolean(
+          scan.antivirus?.available,
+        ),
 
-            status:
-                scan.antivirus?.status ??
-                'error',
+      status:
+        scan.antivirus?.status ??
+        'error',
 
-            details:
-                scan.antivirus?.details ??
-                '',
-        },
+      details:
+        scan.antivirus?.details ??
+        '',
+    },
 
-        evidence:
-            scan.evidence ?? [],
+    evidence:
+      scan.evidence ?? [],
 
-        risk:
-            scan.risk,
+    risk:
+      scan.risk,
 
-        recommendation:
-            scan.recommendation,
+    recommendation:
+      scan.recommendation,
 
-        pdfAnalysis:
-            scan.pdfAnalysis ??
-            undefined,
-    }
+    pdfAnalysis:
+      scan.pdfAnalysis ??
+      undefined,
+
+    exeAnalysis:
+      scan.exeAnalysis ??
+      undefined,
+  }
 }
 
 export async function getScanResult(
-    userId: string,
-    scanId: string,
+  userId: string,
+  scanId: string,
 ): Promise<ScanResult | null> {
-    const scan =
-        await Scan.findOne({
-            userId,
-            scanId,
-        }).lean()
+  const scan =
+    await Scan.findOne({
+      userId,
+      scanId,
+    }).lean()
 
-    if (!scan) {
-        return null
-    }
+  if (!scan) {
+    return null
+  }
 
-    return documentToScanResult(
-        scan,
-    )
+  return documentToScanResult(
+    scan,
+  )
 }
 
 export async function analyzeFile(
-    file: Express.Multer.File,
-    userId: string,
-    scanRequestId: string,
+  file: Express.Multer.File,
+  userId: string,
+  scanRequestId: string,
 ): Promise<ScanRequestResult> {
-    /*
-     * --------------------------------
-     * 1. Cheap deterministic analysis
-     * --------------------------------
-     *
-     * These operations are safe to run twice
-     * in a race because they don't create
-     * database records or start expensive
-     * analysis.
-     */
+  /*
+   * 1. Cheap deterministic analysis
+   *
+   * These operations do not create database
+   * records or start deep analysis.
+   */
 
-    const fileType =
-        await detectFileType(
-            file.path,
-            file.originalname,
-        )
+  const fileType =
+    await detectFileType(
+      file.path,
+      file.originalname,
+    )
 
-    const sha256 =
-        await calculateSha256(
-            file.path,
-        )
+  const sha256 =
+    await calculateSha256(
+      file.path,
+    )
 
-    const scanId =
-        randomUUID()
+  const scanId =
+    randomUUID()
 
-    /*
-     * --------------------------------
-     * 2. Reserve the logical scan
-     * --------------------------------
-     *
-     * The MongoDB unique index on:
-     *
-     * userId + scanRequestId
-     *
-     * guarantees that only ONE request can
-     * own this scan.
-     */
+  /*
+   * 2. Reserve the logical scan.
+   *
+   * The MongoDB unique index on userId +
+   * scanRequestId ensures that only one
+   * request owns this logical scan.
+   */
 
-    try {
-        await Scan.create({
-            scanId,
+  try {
+    await Scan.create({
+      scanId,
 
-            scanRequestId,
+      scanRequestId,
 
-            userId,
+      userId,
 
-            filename:
-                file.originalname,
+      filename:
+        file.originalname,
 
-            size:
-                file.size,
+      size:
+        file.size,
 
-            extension:
-                fileType.detectedExtension
-                    ? `.${fileType.detectedExtension}`
-                    : null,
+      extension:
+        fileType.detectedExtension
+          ? `.${fileType.detectedExtension}`
+          : null,
 
-            detectedExtension:
-                fileType.detectedExtension,
+      detectedExtension:
+        fileType.detectedExtension,
 
-            extensionMismatch:
-                fileType.extensionMismatch,
+      extensionMismatch:
+        fileType.extensionMismatch,
 
-            mimeType:
-                fileType.detectedMime,
+      mimeType:
+        fileType.detectedMime,
 
-            sha256,
+      sha256,
 
-            status:
-                'analyzing',
+      status:
+        'analyzing',
 
-            antivirus: {
-                engine:
-                    'clamav',
+      antivirus: {
+        engine:
+          'clamav',
 
-                available:
-                    false,
+        available:
+          false,
 
-                status:
-                    'unavailable',
+        status:
+          'unavailable',
 
-                details:
-                    'Scan is still in progress.',
-            },
+        details:
+          'Scan is still in progress.',
+      },
 
-            /*
-             * These fields are required by the
-             * MongoDB schema even while analyzing.
-             */
-            risk: {
-                score: 0,
-                level: 'low',
-            },
+      risk: {
+        score: 0,
+        level: 'low',
+      },
 
-            recommendation:
-                'allow',
+      recommendation:
+        'review',
 
-            evidence: [],
+      evidence: [],
 
-            pdfAnalysis:
-                null,
-        })
-    } catch (error) {
-        /*
-         * Another request won the unique-index
-         * race.
-         */
-        if (
-            !isDuplicateKeyError(error)
-        ) {
-            throw error
-        }
+      pdfAnalysis:
+        null,
 
-        const existing =
-            await Scan.findOne({
-                userId,
-                scanRequestId,
-            }).lean()
-
-        if (!existing) {
-            throw error
-        }
-
-        /*
-         * Existing request has already completed.
-         */
-        if (
-            existing.status ===
-            'completed'
-        ) {
-            return {
-                status:
-                    'completed',
-
-                result:
-                    documentToScanResult(
-                        existing,
-                    ),
-
-                created: false,
-            }
-        }
-
-        /*
-         * Existing request failed.
-         */
-        if (
-            existing.status ===
-            'failed'
-        ) {
-            return {
-                status:
-                    'failed',
-
-                scanId:
-                    existing.scanId,
-
-                error:
-                    existing.errorMessage ??
-                    'File analysis failed.',
-
-                created: false,
-            }
-        }
-
-        /*
-         * Existing request is currently
-         * being analyzed.
-         */
-        return {
-            status:
-                'analyzing',
-
-            scanId:
-                existing.scanId,
-
-            created: false,
-        }
+      exeAnalysis:
+        null,
+    })
+  } catch (error) {
+    if (
+      !isDuplicateKeyError(error)
+    ) {
+      throw error
     }
 
-    try {
-        /*
-         * --------------------------------
-         * 3. ClamAV
-         * --------------------------------
-         */
+    const existing =
+      await Scan.findOne({
+        userId,
+        scanRequestId,
+      }).lean()
 
-        const antivirus =
-            await scanWithClamAV(
-                file.path,
-            )
+    if (!existing) {
+      throw error
+    }
 
-        /*
-         * --------------------------------
-         * 4. Deep PDF analysis
-         * --------------------------------
-         */
+    if (
+      existing.status ===
+      'completed'
+    ) {
+      return {
+        status:
+          'completed',
 
-        const pdfAnalysis =
-            fileType.detectedExtension ===
-                'pdf'
-                ? await analyzePdf(
-                    file.path,
-                )
-                : null
+        result:
+          documentToScanResult(
+            existing,
+          ),
 
-        /*
-         * --------------------------------
-         * 5. Security evidence
-         * --------------------------------
-         */
+        created: false,
+      }
+    }
 
-        const evidence: Evidence[] =
-            []
+    if (
+      existing.status ===
+      'failed'
+    ) {
+      return {
+        status:
+          'failed',
 
-        /*
-         * File type mismatch
-         */
-        if (
-            fileType.extensionMismatch
-        ) {
-            evidence.push(
-                createEvidence({
-                    category:
-                        'file-type',
+        scanId:
+          existing.scanId,
 
-                    title:
-                        'File type mismatch',
+        error:
+          existing.errorMessage ??
+          'File analysis failed.',
 
-                    description:
-                        'The filename extension does not match the detected file type.',
+        created: false,
+      }
+    }
 
-                    severity:
-                        'high',
+    return {
+      status:
+        'analyzing',
 
-                    score:
-                        15,
+      scanId:
+        existing.scanId,
 
-                    source:
-                        'magic-byte-analysis',
-                }),
-            )
-        }
+      created: false,
+    }
+  }
 
-        /*
-         * Malware
-         */
-        if (
+  try {
+    /*
+     * 3. Antivirus scan
+     */
+
+    const antivirus =
+      await scanWithClamAV(
+        file.path,
+      )
+
+    /*
+     * 4. Deep PDF analysis
+     *
+     * Keep PDF analysis independent from
+     * EXE analysis. A PDF renamed to .exe
+     * may go through both checks.
+     */
+
+    const pdfAnalysis =
+      fileType.detectedExtension ===
+      'pdf'
+        ? await analyzePdf(
+            file.path,
+          )
+        : null
+
+    /*
+     * 5. Static EXE analysis
+     *
+     * Analyze:
+     * - Files detected as EXEs.
+     * - Files whose filename ends in .exe,
+     *   even if their detected type differs.
+     *
+     * This catches extension spoofing. The
+     * analyzer must inspect the file as data
+     * and must never execute it.
+     */
+
+    const hasExeExtension =
+      /\.exe$/i.test(
+        file.originalname,
+      )
+
+    const shouldAnalyzeExe =
+      fileType.detectedExtension ===
+        'exe' ||
+      hasExeExtension
+
+    const exeAnalysis =
+      shouldAnalyzeExe
+        ? await analyzeExe(
+            file.path,
+          )
+        : null
+
+    /*
+     * 6. Build security evidence
+     */
+
+    const evidence: Evidence[] =
+      []
+
+    /*
+     * File type mismatch
+     */
+
+    if (
+      fileType.extensionMismatch
+    ) {
+      evidence.push(
+        createEvidence({
+          category:
+            'file-type',
+
+          title:
+            'File type mismatch',
+
+          description:
+            'The filename extension does not match the detected file type.',
+
+          severity:
+            'high',
+
+          score:
+            15,
+
+          source:
+            'magic-byte-analysis',
+        }),
+      )
+    }
+
+    /*
+     * Malware detected by ClamAV
+     */
+
+    if (
+      antivirus.status ===
+      'threat'
+    ) {
+      evidence.push(
+        createEvidence({
+          category:
+            'malware',
+
+          title:
+            'Malware detected',
+
+          description:
+            antivirus.details,
+
+          severity:
+            'critical',
+
+          score:
+            50,
+
+          source:
+            'clamav',
+        }),
+      )
+    }
+
+    /*
+     * ClamAV unavailable
+     */
+
+    if (
+      antivirus.status ===
+      'unavailable'
+    ) {
+      evidence.push(
+        createEvidence({
+          category:
+            'scanner',
+
+          title:
+            'Antivirus scanner unavailable',
+
+          description:
+            'ClamAV was not available for this scan.',
+
+          severity:
+            'medium',
+
+          score:
+            5,
+
+          source:
+            'clamav',
+        }),
+      )
+    }
+
+    /*
+     * PDF evidence
+     */
+
+    if (pdfAnalysis) {
+      evidence.push(
+        ...buildPdfEvidence(
+          pdfAnalysis,
+        ),
+      )
+    }
+
+    /*
+     * EXE evidence
+     */
+
+    if (exeAnalysis) {
+      evidence.push(
+        ...buildExeEvidence(
+          exeAnalysis,
+        ),
+      )
+    }
+
+    /*
+     * 7. Calculate risk
+     */
+
+    const riskScore =
+      calculateRisk(
+        evidence,
+      )
+
+    const riskLevel =
+      riskLevelFromScore(
+        riskScore,
+      )
+
+    const risk = {
+      score:
+        riskScore,
+
+      level:
+        riskLevel,
+    }
+
+    const scoreRecommendation =
+      recommendationForRisk(
+        riskScore,
+      )
+
+    /*
+     * Preserve the PDF hidden-text safeguard.
+     */
+
+    const hasHighRiskHiddenPdfText =
+      evidence.some(
+        (item) =>
+          item.category ===
+            'pdf-hidden-text' &&
+          item.severity === 'high',
+      )
+
+    const recommendation =
+      scoreRecommendation ===
+        'allow' &&
+      hasHighRiskHiddenPdfText
+        ? 'review'
+        : scoreRecommendation
+
+    /*
+     * EXE-specific verdict policy:
+     *
+     * Block:
+     *   ClamAV explicitly detected a threat.
+     *
+     * Review:
+     *   AV did not confirm a clean scan,
+     *   EXE analysis is unsupported,
+     *   extension mismatch exists,
+     *   structural warnings exist,
+     *   high-severity EXE evidence exists,
+     *   or the risk score is elevated.
+     *
+     * Allow:
+     *   Supported EXE analysis, clean AV scan,
+     *   and no elevated findings.
+     *
+     * A review/allow decision is not a guarantee
+     * that a file is safe.
+     */
+
+    const hasHighSeverityExeEvidence =
+      evidence.some(
+        (item) =>
+          item.category.startsWith(
+            'exe-',
+          ) &&
+          item.severity === 'high',
+      )
+
+    const hasExeStructuralWarnings =
+      Boolean(
+        exeAnalysis?.structuralWarnings?.length,
+      )
+
+    const finalRecommendation =
+      shouldAnalyzeExe
+        ? (
             antivirus.status ===
             'threat'
-        ) {
-            evidence.push(
-                createEvidence({
-                    category:
-                        'malware',
+              ? 'block'
+              : (
+                  antivirus.status !==
+                    'clean' ||
+                  !exeAnalysis?.supported ||
+                  fileType.extensionMismatch ||
+                  hasExeStructuralWarnings ||
+                  hasHighSeverityExeEvidence ||
+                  riskScore >= 25
+                )
+                  ? 'review'
+                  : 'allow'
+          )
+        : recommendation
 
-                    title:
-                        'Malware detected',
+    /*
+     * 8. Build final result
+     */
 
-                    description:
-                        antivirus.details,
+    const result: ScanResult = {
+      scanId,
 
-                    severity:
-                        'critical',
+      filename:
+        file.originalname,
 
-                    score:
-                        50,
+      size:
+        file.size,
 
-                    source:
-                        'clamav',
-                }),
-            )
-        }
+      status:
+        'completed',
 
-        /*
-         * ClamAV unavailable
-         */
-        if (
-            antivirus.status ===
-            'unavailable'
-        ) {
-            evidence.push(
-                createEvidence({
-                    category:
-                        'scanner',
+      fileType,
 
-                    title:
-                        'Antivirus scanner unavailable',
+      hash: {
+        algorithm:
+          'sha256',
 
-                    description:
-                        'ClamAV was not available for this scan.',
+        value:
+          sha256,
+      },
 
-                    severity:
-                        'medium',
+      antivirus: {
+        engine:
+          'clamav',
 
-                    score:
-                        5,
+        available:
+          antivirus.available,
 
-                    source:
-                        'clamav',
-                }),
-            )
-        }
+        status:
+          antivirus.status,
 
-        /*
-         * PDF evidence
-         */
-        if (pdfAnalysis) {
-            evidence.push(
-                ...buildPdfEvidence(
-                    pdfAnalysis,
-                ),
-            )
-        }
+        details:
+          antivirus.details,
+      },
 
-        /*
-         * --------------------------------
-         * 6. Risk calculation
-         * --------------------------------
-         */
+      pdfAnalysis:
+        pdfAnalysis
+          ? {
+              supported:
+                pdfAnalysis.supported,
 
-        const riskScore =
-            calculateRisk(
-                evidence,
-            )
+              metadata:
+                pdfAnalysis.metadata,
 
-        const riskLevel =
-            riskLevelFromScore(
-                riskScore,
-            )
+              structure: {
+                pageCount:
+                  pdfAnalysis
+                    .structure
+                    .pageCount,
 
-        const risk = {
-            score:
-                riskScore,
+                javascriptCount:
+                  pdfAnalysis
+                    .structure
+                    .javascriptCount,
 
-            level:
-                riskLevel,
-        }
+                embeddedFileCount:
+                  pdfAnalysis
+                    .structure
+                    .embeddedFileCount,
 
-        const scoreRecommendation =
-            recommendationForRisk(
-                riskScore,
-            )
+                annotationCount:
+                  pdfAnalysis
+                    .structure
+                    .annotationCount,
 
-        /*
-         * A low aggregate score must not override a high-severity
-         * PDF hidden-text finding. Keep existing block/review decisions;
-         * only upgrade an otherwise-allow decision to review.
-         */
-        const hasHighRiskHiddenPdfText = evidence.some(
-            (item) =>
-                item.category === 'pdf-hidden-text' &&
-                item.severity === 'high',
-        )
+                formFieldCount:
+                  pdfAnalysis
+                    .structure
+                    .formFieldCount,
 
-        const recommendation =
-            scoreRecommendation === 'allow' &&
-                hasHighRiskHiddenPdfText
-                ? 'review'
-                : scoreRecommendation
+                embeddedFiles:
+                  pdfAnalysis
+                    .structure
+                    .embeddedFiles,
 
-        /*
-         * --------------------------------
-         * 7. Build final result
-         * --------------------------------
-         */
+                openAction: {
+                  present:
+                    pdfAnalysis
+                      .structure
+                      .openAction
+                      .present,
 
-        const result: ScanResult = {
-            scanId,
+                  type:
+                    pdfAnalysis
+                      .structure
+                      .openAction
+                      .type,
 
-            filename:
-                file.originalname,
+                  rawType:
+                    pdfAnalysis
+                      .structure
+                      .openAction
+                      .rawType,
 
-            size:
-                file.size,
+                  target:
+                    pdfAnalysis
+                      .structure
+                      .openAction
+                      .target,
+                },
 
-            status:
-                'completed',
+                hasLaunchAction:
+                  pdfAnalysis
+                    .structure
+                    .hasLaunchAction,
 
-            fileType,
+                hasAdditionalActions:
+                  pdfAnalysis
+                    .structure
+                    .hasAdditionalActions,
 
-            hash: {
-                algorithm:
-                    'sha256',
+                hasRichMedia:
+                  pdfAnalysis
+                    .structure
+                    .hasRichMedia,
 
-                value:
-                    sha256,
-            },
+                hasAcroForm:
+                  pdfAnalysis
+                    .structure
+                    .hasAcroForm,
 
-            antivirus: {
-                engine:
-                    'clamav',
+                hasXfa:
+                  pdfAnalysis
+                    .structure
+                    .hasXfa,
+              },
 
-                available:
-                    antivirus.available,
+              links: {
+                urls:
+                  pdfAnalysis
+                    .links
+                    .urls,
+              },
 
-                status:
-                    antivirus.status,
+              text: {
+                nativeTextLength:
+                  pdfAnalysis
+                    .text
+                    .nativeTextLength,
 
-                details:
-                    antivirus.details,
-            },
+                ocrAttempted:
+                  pdfAnalysis
+                    .text
+                    .ocrAttempted,
 
-            pdfAnalysis:
+                ocrAvailable:
+                  pdfAnalysis
+                    .text
+                    .ocrAvailable,
+
+                ocrTextLength:
+                  pdfAnalysis
+                    .text
+                    .ocrTextLength,
+
+                ocrPageCount:
+                  pdfAnalysis
+                    .text
+                    .ocrPageCount,
+
+                errors:
+                  pdfAnalysis
+                    .text
+                    .errors ?? [],
+
+                source:
+                  pdfAnalysis
+                    .text
+                    .source,
+              },
+
+              suspiciousObjects:
                 pdfAnalysis
-                    ? {
-                        supported:
-                            pdfAnalysis.supported,
+                  .suspiciousObjects,
 
-                        metadata:
-                            pdfAnalysis.metadata,
+              hiddenText: {
+                count:
+                  pdfAnalysis.hiddenText?.count ??
+                  pdfAnalysis.hiddenText?.items?.length ??
+                  0,
 
-                        structure: {
-                            pageCount:
-                                pdfAnalysis
-                                    .structure
-                                    .pageCount,
+                items:
+                  pdfAnalysis.hiddenText?.items ?? [],
+              },
+            }
+          : undefined,
 
-                            javascriptCount:
-                                pdfAnalysis
-                                    .structure
-                                    .javascriptCount,
+      exeAnalysis:
+        exeAnalysis ?? undefined,
 
-                            embeddedFileCount:
-                                pdfAnalysis
-                                    .structure
-                                    .embeddedFileCount,
+      evidence,
 
-                            annotationCount:
-                                pdfAnalysis
-                                    .structure
-                                    .annotationCount,
+      risk,
 
-                            formFieldCount:
-                                pdfAnalysis
-                                    .structure
-                                    .formFieldCount,
-
-                            embeddedFiles:
-                                pdfAnalysis
-                                    .structure
-                                    .embeddedFiles,
-
-                            openAction: {
-                                present:
-                                    pdfAnalysis
-                                        .structure
-                                        .openAction
-                                        .present,
-
-                                type:
-                                    pdfAnalysis
-                                        .structure
-                                        .openAction
-                                        .type,
-
-                                rawType:
-                                    pdfAnalysis
-                                        .structure
-                                        .openAction
-                                        .rawType,
-
-                                target:
-                                    pdfAnalysis
-                                        .structure
-                                        .openAction
-                                        .target,
-                            },
-
-                            hasLaunchAction:
-                                pdfAnalysis
-                                    .structure
-                                    .hasLaunchAction,
-
-                            hasAdditionalActions:
-                                pdfAnalysis
-                                    .structure
-                                    .hasAdditionalActions,
-
-                            hasRichMedia:
-                                pdfAnalysis
-                                    .structure
-                                    .hasRichMedia,
-
-                            hasAcroForm:
-                                pdfAnalysis
-                                    .structure
-                                    .hasAcroForm,
-
-                            hasXfa:
-                                pdfAnalysis
-                                    .structure
-                                    .hasXfa,
-                        },
-
-                        links: {
-                            urls:
-                                pdfAnalysis
-                                    .links
-                                    .urls,
-                        },
-
-
-                        text: {
-                            nativeTextLength:
-                                pdfAnalysis
-                                    .text
-                                    .nativeTextLength,
-
-                            ocrAttempted:
-                                pdfAnalysis
-                                    .text
-                                    .ocrAttempted,
-
-                            ocrAvailable:
-                                pdfAnalysis
-                                    .text
-                                    .ocrAvailable,
-
-                            ocrTextLength:
-                                pdfAnalysis
-                                    .text
-                                    .ocrTextLength,
-
-                            ocrPageCount:
-                                pdfAnalysis
-                                    .text
-                                    .ocrPageCount,
-
-                            errors:
-                                pdfAnalysis
-                                    .text
-                                    .errors ?? [],
-
-                            source:
-                                pdfAnalysis
-                                    .text
-                                    .source,
-                        },
-
-                        suspiciousObjects:
-                            pdfAnalysis
-                                .suspiciousObjects,
-
-                        hiddenText: {
-                            count:
-                                pdfAnalysis.hiddenText?.count ??
-                                pdfAnalysis.hiddenText?.items?.length ??
-                                0,
-
-                            items:
-                                pdfAnalysis.hiddenText?.items ?? [],
-                        },
-                    }
-                    : undefined,
-
-            evidence,
-
-            risk,
-
-            recommendation,
-        }
-
-        /*
-         * --------------------------------
-         * 8. Update the RESERVED document
-         * --------------------------------
-         *
-         * We do NOT create another document.
-         */
-
-        await Scan.updateOne(
-            {
-                userId,
-
-                scanRequestId,
-
-                status:
-                    'analyzing',
-            },
-
-            {
-                $set: {
-                    status:
-                        'completed',
-
-                    antivirus:
-                        result.antivirus,
-
-                    risk:
-                        result.risk,
-
-                    recommendation:
-                        result.recommendation,
-
-                    evidence:
-                        result.evidence,
-
-                    pdfAnalysis:
-                        result.pdfAnalysis ??
-                        null,
-
-                    errorMessage:
-                        null,
-                },
-            },
-        )
-
-        return {
-            status:
-                'completed',
-
-            result,
-
-            created:
-                true,
-        }
-    } catch (error) {
-        /*
-         * If analysis fails after the reservation,
-         * mark that SAME MongoDB document failed.
-         */
-
-        const errorMessage =
-            error instanceof Error
-                ? error.message
-                : 'File analysis failed.'
-
-        await Scan.updateOne(
-            {
-                userId,
-
-                scanRequestId,
-
-                status:
-                    'analyzing',
-            },
-
-            {
-                $set: {
-                    status:
-                        'failed',
-
-                    errorMessage,
-                },
-            },
-        )
-
-        throw error
+      recommendation:
+        finalRecommendation,
     }
+
+    /*
+     * 9. Update the reserved document.
+     *
+     * Do not create a second document.
+     */
+
+    await Scan.updateOne(
+      {
+        userId,
+
+        scanRequestId,
+
+        status:
+          'analyzing',
+      },
+
+      {
+        $set: {
+          status:
+            'completed',
+
+          antivirus:
+            result.antivirus,
+
+          risk:
+            result.risk,
+
+          recommendation:
+            result.recommendation,
+
+          evidence:
+            result.evidence,
+
+          pdfAnalysis:
+            result.pdfAnalysis ??
+            null,
+
+          exeAnalysis:
+            result.exeAnalysis ??
+            null,
+
+          errorMessage:
+            null,
+        },
+      },
+    )
+
+    return {
+      status:
+        'completed',
+
+      result,
+
+      created:
+        true,
+    }
+  } catch (error) {
+    /*
+     * If analysis fails after reservation,
+     * mark the same MongoDB document failed.
+     */
+
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : 'File analysis failed.'
+
+    await Scan.updateOne(
+      {
+        userId,
+
+        scanRequestId,
+
+        status:
+          'analyzing',
+      },
+
+      {
+        $set: {
+          status:
+            'failed',
+
+          errorMessage,
+        },
+      },
+    )
+
+    throw error
+  }
 }

@@ -46,7 +46,7 @@ export default function UploadPanel({ onSelected }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.docx,.png,.jpg,.jpeg"
+        accept=".pdf,.exe,.docx,.png,.jpg,.jpeg"
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0]
