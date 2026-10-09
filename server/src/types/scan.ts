@@ -89,6 +89,27 @@ export interface PdfFacts {
     text: PdfTextFacts
 
     suspiciousObjects: PdfSuspiciousObject[]
+
+    /** Native PDF text flagged by multi-signal hidden-text analysis. */
+    hiddenText: {
+        count: number
+        items: PdfHiddenTextFinding[]
+    }
+}
+
+
+export interface PdfHiddenTextFinding {
+    page: number
+    text: string
+    fontSize: number
+    bbox: [number, number, number, number]
+    color: [number, number, number] | null
+    reasons: string[]
+    contentSignals: string[]
+    urls: string[]
+    visibleOverlap: number
+    ocrChecked: boolean
+    confidence: number
 }
 
 export interface PdfStructureFacts {
@@ -177,9 +198,12 @@ export interface PdfTextFacts {
 
     ocrPageCount: number
 
+    errors: Array<{ page?: number; error: string }>
+
     source:
         | 'native'
         | 'ocr'
+        | 'mixed'
         | 'none'
 }
 

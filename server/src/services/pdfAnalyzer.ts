@@ -6,6 +6,7 @@ import type {
     PdfFacts,
     PdfOpenAction,
     PdfSuspiciousObject,
+    PdfHiddenTextFinding,
 } from '../types/scan.js'
 
 interface PythonResult {
@@ -35,13 +36,13 @@ interface PythonResult {
         present?: boolean
 
         type?:
-            | 'GoTo'
-            | 'GoToR'
-            | 'URI'
-            | 'JavaScript'
-            | 'Launch'
-            | 'Unknown'
-            | null
+        | 'GoTo'
+        | 'GoToR'
+        | 'URI'
+        | 'JavaScript'
+        | 'Launch'
+        | 'Unknown'
+        | null
 
         rawType?: string | null
 
@@ -80,13 +81,20 @@ interface PythonResult {
 
     ocrText?: string
 
-    textSource?: 'native' | 'ocr' | 'none'
+    ocrErrors?: Array<{ page?: number; error: string }>
+
+    textSource?: 'native' | 'ocr' | 'mixed' | 'none'
 
     // --------------------------------
     // Suspicious PDF objects
     // --------------------------------
 
     suspiciousObjects?: PdfSuspiciousObject[]
+
+    hiddenText?: {
+        count?: number
+        items?: PdfHiddenTextFinding[]
+    }
 
     error?: string
 }
@@ -193,7 +201,7 @@ export function analyzePdf(
                 resolve(
                     createFailedFacts(
                         error.message ||
-                            'Unable to start the PDF analyzer.',
+                        'Unable to start the PDF analyzer.',
                     ),
                 )
             },
@@ -216,7 +224,7 @@ export function analyzePdf(
                     resolve(
                         createFailedFacts(
                             stderr.trim() ||
-                                'The PDF analyzer exited with an error.',
+                            'The PDF analyzer exited with an error.',
                         ),
                     )
 
@@ -270,7 +278,7 @@ export function analyzePdf(
                         resolve(
                             createFailedFacts(
                                 parsed.error ||
-                                    'Unknown PDF analysis error.',
+                                'Unknown PDF analysis error.',
                             ),
                         )
 
@@ -381,6 +389,10 @@ export function analyzePdf(
                                 parsed.ocrPageCount ??
                                 0,
 
+                            errors:
+                                parsed.ocrErrors ??
+                                [],
+
                             source:
                                 parsed.textSource ??
                                 'none',
@@ -393,6 +405,11 @@ export function analyzePdf(
                         suspiciousObjects:
                             parsed.suspiciousObjects ??
                             [],
+
+                        hiddenText: {
+                            count: parsed.hiddenText?.count ?? parsed.hiddenText?.items?.length ?? 0,
+                            items: parsed.hiddenText?.items ?? [],
+                        },
                     }
 
                     resolve(facts)
@@ -589,10 +606,18 @@ function createFailedFacts(
             ocrPageCount:
                 0,
 
+            errors:
+                [],
+
             source:
                 'none',
         },
 
         suspiciousObjects: [],
+
+        hiddenText: {
+            count: 0,
+            items: [],
+        },
     }
 }

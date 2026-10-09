@@ -441,11 +441,41 @@ for (
                     'OCR unavailable',
 
                 description:
-                    'The PDF did not contain native text and OCR was unavailable, so visual text could not be fully inspected.',
+                    'One or more pages lacked native text and OCR was unavailable, so visual text on those pages could not be fully inspected.',
 
                 severity: 'medium',
 
                 score: 5,
+
+                source:
+                    'pdf-ocr',
+            }),
+        )
+    }
+
+    // ---------------------------------------------------------
+    // OCR incomplete / partial
+    // ---------------------------------------------------------
+
+    if (
+        facts.text.ocrAttempted &&
+        facts.text.ocrAvailable &&
+        facts.text.errors.length > 0
+    ) {
+
+        evidence.push(
+            createEvidence({
+                category: 'pdf-text',
+
+                title:
+                    'OCR incomplete',
+
+                description:
+                    `OCR was available, but ${facts.text.errors.length} OCR issue(s) or processing limit(s) were reported. Some visual text may not have been inspected.`,
+
+                severity: 'medium',
+
+                score: 4,
 
                 source:
                     'pdf-ocr',
@@ -505,6 +535,67 @@ for (
 
                 source:
                     'pdf-structure-analysis',
+            }),
+        )
+    }
+
+
+    // ---------------------------------------------------------
+    // Hidden / visually suspicious text
+    // ---------------------------------------------------------
+    //
+    // Findings are heuristic signals, not proof of malware.
+    // We aggregate them into one evidence item to avoid flooding
+    // the report when a PDF contains many suspicious spans.
+    // ---------------------------------------------------------
+
+    const hiddenItems = facts.hiddenText?.items ?? []
+
+    if (hiddenItems.length > 0) {
+        const suspiciousContent = hiddenItems.some((item) =>
+            item.contentSignals.some((signal) =>
+                [
+                    'prompt-injection',
+                    'command-execution',
+                    'credential-request',
+                    'possible-obfuscation',
+                ].includes(signal),
+            ),
+        )
+
+        const strongest = hiddenItems
+            .slice()
+            .sort((a, b) => b.confidence - a.confidence)[0]
+
+        const reasonLabels = [...new Set(
+            hiddenItems.flatMap((item) => item.reasons),
+        )].slice(0, 6)
+
+        const contentLabels = [...new Set(
+            hiddenItems.flatMap((item) => item.contentSignals),
+        )].slice(0, 6)
+
+        const preview = strongest?.text
+            ? strongest.text.replace(/\s+/g, ' ').slice(0, 220)
+            : ''
+
+        evidence.push(
+            createEvidence({
+                category: 'pdf-hidden-text',
+                title: suspiciousContent
+                    ? 'Hidden text with suspicious instructions detected'
+                    : 'Potentially hidden or visually inconspicuous text detected',
+                description:
+                    `${hiddenItems.length} text span(s) matched hidden-text heuristics. ` +
+                    `Signals: ${reasonLabels.join(', ') || 'unspecified'}. ` +
+                    (contentLabels.length
+                        ? `Content indicators: ${contentLabels.join(', ')}. `
+                        : '') +
+                    (preview ? `Example text: "${preview}". ` : '') +
+                    'This is a heuristic finding; review the page visually before treating it as malicious.',
+                severity: suspiciousContent ? 'high' : 'medium',
+                score: suspiciousContent ? 20 : 8,
+                source: 'pdf-hidden-text-analysis',
             }),
         )
     }
