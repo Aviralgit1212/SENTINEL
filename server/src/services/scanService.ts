@@ -1,13 +1,19 @@
+
 import { randomUUID } from 'node:crypto'
 import type { Express } from 'express'
 
 import { calculateSha256 } from './hashService.js'
 import { detectFileType } from './fileTypeService.js'
 import { scanWithClamAV } from './clamAvService.js'
+
 import { analyzePdf } from './pdfAnalyzer.js'
 import { buildPdfEvidence } from './pdfEvidenceBuilder.js'
+
 import { analyzeExe } from './exeAnalyzer.js'
 import { buildExeEvidence } from './exeEvidenceBuilder.js'
+
+import { analyzeDocx } from './docxAnalyzer.js'
+import { buildDocxEvidence } from './docxEvidenceBuilder.js'
 
 import { Scan } from '../models/Scan.js'
 
@@ -132,6 +138,10 @@ function documentToScanResult(
     exeAnalysis:
       scan.exeAnalysis ??
       undefined,
+
+    docxAnalysis:
+      scan.docxAnalysis ??
+      undefined,
   }
 }
 
@@ -160,7 +170,7 @@ export async function analyzeFile(
   scanRequestId: string,
 ): Promise<ScanRequestResult> {
   /*
-   * 1. Cheap deterministic analysis
+   * 1. Cheap deterministic analysis.
    *
    * These operations do not create database
    * records or start deep analysis.
@@ -250,6 +260,9 @@ export async function analyzeFile(
 
       exeAnalysis:
         null,
+
+      docxAnalysis:
+        null,
     })
   } catch (error) {
     if (
@@ -317,7 +330,9 @@ export async function analyzeFile(
 
   try {
     /*
-     * 3. Antivirus scan
+     * 3. Antivirus scan.
+     *
+     * Preserve the existing ClamAV integration.
      */
 
     const antivirus =
@@ -326,11 +341,10 @@ export async function analyzeFile(
       )
 
     /*
-     * 4. Deep PDF analysis
+     * 4. Deep PDF analysis.
      *
      * Keep PDF analysis independent from
-     * EXE analysis. A PDF renamed to .exe
-     * may go through both checks.
+     * EXE and DOCX analysis.
      */
 
     const pdfAnalysis =
@@ -342,16 +356,12 @@ export async function analyzeFile(
         : null
 
     /*
-     * 5. Static EXE analysis
+     * 5. Static EXE analysis.
      *
-     * Analyze:
-     * - Files detected as EXEs.
-     * - Files whose filename ends in .exe,
-     *   even if their detected type differs.
+     * Analyze files detected as EXEs and
+     * files whose names end in .exe.
      *
-     * This catches extension spoofing. The
-     * analyzer must inspect the file as data
-     * and must never execute it.
+     * The analyzer must never execute the file.
      */
 
     const hasExeExtension =
@@ -372,14 +382,45 @@ export async function analyzeFile(
         : null
 
     /*
-     * 6. Build security evidence
+     * 6. Static DOCX analysis.
+     *
+     * Analyze files detected as DOCX/DOCM
+     * and files named .docx or .docm,
+     * even when their detected file type differs.
+     *
+     * This supports extension-spoofing checks.
+     * The Python analyzer must treat the document
+     * as data and must never execute its contents.
+     */
+
+    const hasDocxExtension =
+      /\.(docx|docm)$/i.test(
+        file.originalname,
+      )
+
+    const shouldAnalyzeDocx =
+      fileType.detectedExtension ===
+        'docx' ||
+      fileType.detectedExtension ===
+        'docm' ||
+      hasDocxExtension
+
+    const docxAnalysis =
+      shouldAnalyzeDocx
+        ? await analyzeDocx(
+            file.path,
+          )
+        : null
+
+    /*
+     * 7. Build security evidence.
      */
 
     const evidence: Evidence[] =
       []
 
     /*
-     * File type mismatch
+     * File type mismatch.
      */
 
     if (
@@ -409,7 +450,7 @@ export async function analyzeFile(
     }
 
     /*
-     * Malware detected by ClamAV
+     * Malware detected by ClamAV.
      */
 
     if (
@@ -440,7 +481,7 @@ export async function analyzeFile(
     }
 
     /*
-     * ClamAV unavailable
+     * ClamAV unavailable.
      */
 
     if (
@@ -471,7 +512,7 @@ export async function analyzeFile(
     }
 
     /*
-     * PDF evidence
+     * PDF evidence.
      */
 
     if (pdfAnalysis) {
@@ -483,7 +524,7 @@ export async function analyzeFile(
     }
 
     /*
-     * EXE evidence
+     * EXE evidence.
      */
 
     if (exeAnalysis) {
@@ -495,7 +536,24 @@ export async function analyzeFile(
     }
 
     /*
-     * 7. Calculate risk
+     * DOCX evidence.
+     */
+
+    if (docxAnalysis) {
+      evidence.push(
+        ...buildDocxEvidence(
+          docxAnalysis,
+        ),
+      )
+    }
+
+    /*
+     * 8. Calculate risk using the existing
+     * shared evidence pipeline.
+     *
+     * DOCX evidence contributes to the same
+     * risk score as PDF, EXE, antivirus, and
+     * file-type evidence.
      */
 
     const riskScore =
@@ -541,25 +599,19 @@ export async function analyzeFile(
         : scoreRecommendation
 
     /*
-     * EXE-specific verdict policy:
+     * 9. EXE-specific verdict policy.
+     *
+     * Preserve the existing EXE policy:
      *
      * Block:
      *   ClamAV explicitly detected a threat.
      *
      * Review:
      *   AV did not confirm a clean scan,
-     *   EXE analysis is unsupported,
-     *   extension mismatch exists,
-     *   structural warnings exist,
-     *   high-severity EXE evidence exists,
+     *   analysis is unsupported, an extension
+     *   mismatch exists, structural warnings
+     *   exist, high-severity EXE evidence exists,
      *   or the risk score is elevated.
-     *
-     * Allow:
-     *   Supported EXE analysis, clean AV scan,
-     *   and no elevated findings.
-     *
-     * A review/allow decision is not a guarantee
-     * that a file is safe.
      */
 
     const hasHighSeverityExeEvidence =
@@ -575,6 +627,77 @@ export async function analyzeFile(
       Boolean(
         exeAnalysis?.structuralWarnings?.length,
       )
+
+    /*
+     * 10. DOCX-specific verdict policy.
+     *
+     * Block:
+     *   ClamAV explicitly detected a threat.
+     *
+     * Review:
+     *   AV is not clean, analysis is unsupported,
+     *   file type mismatch exists, DOCX analysis
+     *   finds high-severity evidence, package
+     *   warnings, hidden text, embedded objects,
+     *   macro parts, external templates, suspicious
+     *   indicators, or an elevated risk score.
+     *
+     * A clean DOCX with no review indicators can
+     * be allowed under this policy. This is not
+     * a guarantee that the document is safe.
+     */
+
+    const hasHighSeverityDocxEvidence =
+      evidence.some(
+        (item) =>
+          item.category.startsWith(
+            'docx-',
+          ) &&
+          (
+            item.severity === 'high' ||
+            item.severity === 'critical'
+          ),
+      )
+
+    const hasDocxReviewIndicators =
+      Boolean(
+        docxAnalysis && (
+          !docxAnalysis.supported ||
+          docxAnalysis.packageWarnings.length > 0 ||
+          docxAnalysis.hiddenTextCount > 0 ||
+          docxAnalysis.embeddedObjects.length > 0 ||
+          docxAnalysis.macroParts.length > 0 ||
+          docxAnalysis.hasExternalTemplate ||
+          docxAnalysis.suspiciousIndicators.length > 0
+        ),
+      )
+
+    const docxRecommendation =
+      !shouldAnalyzeDocx
+        ? recommendation
+        : antivirus.status === 'threat'
+          ? 'block'
+          : (
+              antivirus.status !== 'clean' ||
+              !docxAnalysis?.supported ||
+              fileType.extensionMismatch ||
+              hasHighSeverityDocxEvidence ||
+              hasDocxReviewIndicators ||
+              riskScore >= 15
+            )
+              ? 'review'
+              : 'allow'
+
+    /*
+     * Final recommendation.
+     *
+     * Priority:
+     *   1. Existing EXE-specific policy.
+     *   2. DOCX-specific policy.
+     *   3. Existing general risk policy.
+     *
+     * PDF recommendation behavior remains unchanged.
+     */
 
     const finalRecommendation =
       shouldAnalyzeExe
@@ -594,10 +717,12 @@ export async function analyzeFile(
                   ? 'review'
                   : 'allow'
           )
-        : recommendation
+        : shouldAnalyzeDocx
+          ? docxRecommendation
+          : recommendation
 
     /*
-     * 8. Build final result
+     * 11. Build final result.
      */
 
     const result: ScanResult = {
@@ -791,6 +916,9 @@ export async function analyzeFile(
       exeAnalysis:
         exeAnalysis ?? undefined,
 
+      docxAnalysis:
+        docxAnalysis ?? undefined,
+
       evidence,
 
       risk,
@@ -800,7 +928,7 @@ export async function analyzeFile(
     }
 
     /*
-     * 9. Update the reserved document.
+     * 12. Update the reserved document.
      *
      * Do not create a second document.
      */
@@ -838,6 +966,10 @@ export async function analyzeFile(
 
           exeAnalysis:
             result.exeAnalysis ??
+            null,
+
+          docxAnalysis:
+            result.docxAnalysis ??
             null,
 
           errorMessage:
