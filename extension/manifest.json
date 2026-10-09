@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Sentinel Privacy Security",
+  "version": "1.1.0",
+  "description": "Local-first privacy scanning for supported AI sites, with an unsupported-site notice.",
+  "permissions": [
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

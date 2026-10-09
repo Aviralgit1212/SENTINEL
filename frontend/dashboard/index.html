@@ -1,0 +1,2803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>
+    Sentinel Privacy Security — Dashboard
+  </title>
+
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --panel-soft: #fafafa;
+      --border: #e5e7eb;
+
+      --text: #111827;
+      --text-secondary: #374151;
+      --muted: #6b7280;
+
+      --blue: #2563eb;
+      --blue-soft: #eff6ff;
+
+      --green: #16a34a;
+      --green-soft: #f0fdf4;
+
+      --amber: #d97706;
+      --amber-soft: #fff7ed;
+
+      --red: #dc2626;
+      --red-dark: #b91c1c;
+      --red-soft: #fef2f2;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+
+      background:
+        #f7f8fa;
+
+      color: var(--text);
+
+      font-family:
+        Inter,
+        Segoe UI,
+        Arial,
+        sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* ========================================
+       LOGIN
+    ======================================== */
+
+    .login-screen {
+      min-height: 100vh;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      padding: 24px;
+    }
+
+    .login-card {
+      width: min(
+        420px,
+        100%
+      );
+
+      padding: 34px;
+
+      border: 1px solid var(--border);
+      border-radius: 18px;
+
+      background: #ffffff;
+
+      box-shadow:
+        0 18px 50px rgba(
+          15,
+          23,
+          42,
+          0.08
+        );
+    }
+
+    .login-brand {
+      margin-bottom: 26px;
+    }
+
+    .login-eyebrow {
+      color: var(--blue);
+
+      font-size: 11px;
+      font-weight: 800;
+
+      letter-spacing: 0.18em;
+    }
+
+    .login-title {
+      margin: 7px 0 5px;
+
+      font-size: 28px;
+      font-weight: 800;
+
+      letter-spacing: -0.03em;
+    }
+
+    .login-subtitle {
+      margin: 0;
+
+      color: var(--muted);
+
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .login-form {
+      display: grid;
+      gap: 15px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      color: var(--text-secondary);
+
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .field input {
+      width: 100%;
+
+      padding: 11px 12px;
+
+      border: 1px solid var(--border);
+      border-radius: 9px;
+
+      outline: none;
+
+      color: var(--text);
+      background: #ffffff;
+
+      font-size: 13px;
+    }
+
+    .field input:focus {
+      border-color: #93b4e6;
+
+      box-shadow:
+        0 0 0 3px
+        rgba(
+          37,
+          99,
+          235,
+          0.08
+        );
+    }
+
+    .login-button {
+      width: 100%;
+
+      margin-top: 5px;
+
+      padding: 11px 14px;
+
+      border: 0;
+      border-radius: 9px;
+
+      background: #111827;
+      color: #ffffff;
+
+      cursor: pointer;
+
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .login-button:hover {
+      background: #1f2937;
+    }
+
+    .login-button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    .login-error {
+      padding: 10px 11px;
+
+      border: 1px solid #fecaca;
+      border-radius: 9px;
+
+      background: var(--red-soft);
+      color: var(--red-dark);
+
+      font-size: 12px;
+    }
+
+    /* ========================================
+       DASHBOARD
+    ======================================== */
+
+    .shell {
+      width: min(
+        1480px,
+        calc(100% - 48px)
+      );
+
+      margin: 0 auto;
+
+      padding: 30px 0 50px;
+    }
+
+    .topbar {
+      display: flex;
+
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 20px;
+
+      margin-bottom: 26px;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+
+      font-size: 11px;
+      font-weight: 800;
+
+      letter-spacing: 0.18em;
+    }
+
+    h1 {
+      margin: 6px 0 5px;
+
+      font-size: 30px;
+      font-weight: 750;
+
+      line-height: 1.1;
+
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 0;
+
+      color: var(--muted);
+
+      font-size: 13px;
+    }
+
+    .top-actions {
+      display: flex;
+
+      align-items: center;
+
+      gap: 10px;
+    }
+
+    .reviewer {
+      display: flex;
+
+      align-items: center;
+
+      gap: 8px;
+
+      padding: 9px 12px;
+
+      border: 1px solid var(--border);
+      border-radius: 999px;
+
+      background: #ffffff;
+
+      color: var(--text-secondary);
+
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .reviewer-dot {
+      width: 8px;
+      height: 8px;
+
+      border-radius: 50%;
+
+      background: var(--green);
+    }
+
+    .logout-button {
+      padding: 9px 12px;
+
+      border: 1px solid var(--border);
+      border-radius: 9px;
+
+      background: #ffffff;
+
+      color: var(--text-secondary);
+
+      cursor: pointer;
+
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .stats {
+      display: grid;
+
+      grid-template-columns:
+        repeat(
+          6,
+          minmax(0, 1fr)
+        );
+
+      gap: 14px;
+
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      padding: 18px;
+
+      border: 1px solid var(--border);
+      border-radius: 14px;
+
+      background: var(--panel);
+
+      box-shadow:
+        0 3px 14px rgba(
+          15,
+          23,
+          42,
+          0.04
+        );
+    }
+
+    .stat-label {
+      color: var(--muted);
+
+      font-size: 11px;
+      font-weight: 700;
+
+      letter-spacing: 0.08em;
+
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      margin-top: 8px;
+
+      color: var(--text);
+
+      font-size: 29px;
+      font-weight: 800;
+
+      letter-spacing: -0.03em;
+    }
+
+    .stat-allowed .stat-value {
+      color: var(--green);
+    }
+
+    .stat-redacted .stat-value {
+      color: var(--amber);
+    }
+
+    .stat-blocked .stat-value {
+      color: var(--red);
+    }
+
+    .stat-incomplete .stat-value {
+      color: var(--amber);
+    }
+
+    .stat-pending .stat-value {
+      color: var(--blue);
+    }
+
+    .layout {
+      display: grid;
+
+      grid-template-columns:
+        minmax(0, 1fr)
+        390px;
+
+      gap: 18px;
+
+      align-items: start;
+    }
+
+    .panel {
+      overflow: hidden;
+
+      border: 1px solid var(--border);
+      border-radius: 14px;
+
+      background: var(--panel);
+
+      box-shadow:
+        0 4px 18px rgba(
+          15,
+          23,
+          42,
+          0.05
+        );
+    }
+
+    .panel-header {
+      display: flex;
+
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 18px;
+
+      padding: 17px 18px;
+
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      margin: 0;
+
+      font-size: 16px;
+      font-weight: 750;
+    }
+
+    .panel-description {
+      margin: 4px 0 0;
+
+      color: var(--muted);
+
+      font-size: 12px;
+    }
+
+    .filters {
+      display: flex;
+
+      gap: 8px;
+    }
+
+    .filter-button {
+      padding: 8px 12px;
+
+      border: 1px solid var(--border);
+      border-radius: 8px;
+
+      background: #ffffff;
+
+      color: var(--text-secondary);
+
+      cursor: pointer;
+
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .filter-button.active {
+      border-color: #93b4e6;
+
+      background: var(--blue-soft);
+
+      color: #1d4ed8;
+    }
+
+    .table-state {
+      padding: 28px 18px;
+
+      color: var(--muted);
+
+      font-size: 13px;
+
+      text-align: center;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+
+      border-collapse: collapse;
+    }
+
+    th {
+      padding: 12px 14px;
+
+      border-bottom: 1px solid var(--border);
+
+      background: #fafafa;
+
+      color: #6b7280;
+
+      font-size: 10px;
+      font-weight: 800;
+
+      letter-spacing: 0.08em;
+
+      text-align: left;
+      text-transform: uppercase;
+
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 13px 14px;
+
+      border-bottom:
+        1px solid #f0f1f3;
+
+      color: var(--text-secondary);
+
+      font-size: 12px;
+
+      white-space: nowrap;
+    }
+
+    .event-row {
+      cursor: pointer;
+    }
+
+    .event-row:hover {
+      background: #fafcff;
+    }
+
+    .badge {
+      display: inline-flex;
+
+      padding: 5px 8px;
+
+      border-radius: 999px;
+
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .badge-allow {
+      background: var(--green-soft);
+      color: #15803d;
+    }
+
+    .badge-redact {
+      background: var(--amber-soft);
+      color: #c2410c;
+    }
+
+    .badge-block {
+      background: var(--red-soft);
+      color: var(--red-dark);
+    }
+
+    .badge-pending {
+      background: var(--blue-soft);
+      color: #1d4ed8;
+    }
+
+    .detail {
+      padding: 18px;
+    }
+
+    .detail-row {
+      display: flex;
+
+      justify-content: space-between;
+
+      gap: 14px;
+
+      padding: 10px 0;
+
+      border-bottom:
+        1px solid #f0f1f3;
+    }
+
+    .detail-key {
+      color: var(--muted);
+
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .detail-value {
+      max-width: 62%;
+
+      overflow-wrap: anywhere;
+
+      color: var(--text);
+
+      font-size: 12px;
+      font-weight: 600;
+
+      text-align: right;
+    }
+
+    .section {
+      margin-top: 20px;
+    }
+
+    .section-title {
+      margin: 0 0 9px;
+
+      color: var(--muted);
+
+      font-size: 10px;
+      font-weight: 800;
+
+      letter-spacing: 0.08em;
+
+      text-transform: uppercase;
+    }
+
+    .chips {
+      display: flex;
+
+      flex-wrap: wrap;
+
+      gap: 7px;
+    }
+
+    .chip {
+      padding: 6px 8px;
+
+      border: 1px solid var(--border);
+      border-radius: 8px;
+
+      background: #fafafa;
+
+      color: var(--text-secondary);
+
+      font-size: 10px;
+      font-weight: 650;
+    }
+
+    .audit-item {
+      margin-bottom: 7px;
+
+      padding: 10px;
+
+      border: 1px solid var(--border);
+      border-radius: 9px;
+
+      background: #fafafa;
+    }
+
+    .audit-top {
+      display: flex;
+
+      justify-content: space-between;
+
+      gap: 10px;
+
+      font-size: 10px;
+    }
+
+    .audit-top strong {
+      color: var(--text);
+    }
+
+    .audit-detail {
+      margin-top: 4px;
+
+      color: var(--muted);
+
+      font-size: 10px;
+    }
+
+
+    .review-actions {
+      margin-top: 20px;
+
+      padding: 14px;
+
+      border: 1px solid var(--border);
+      border-radius: 12px;
+
+      background: var(--panel-soft);
+    }
+
+    .review-actions-title {
+      color: var(--text);
+
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .review-actions-description {
+      margin: 5px 0 12px;
+
+      color: var(--muted);
+
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .review-buttons {
+      display: flex;
+
+      gap: 8px;
+    }
+
+    .review-button {
+      flex: 1;
+
+      padding: 9px 12px;
+
+      border-radius: 8px;
+
+      cursor: pointer;
+
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .review-button:disabled {
+      cursor: wait;
+
+      opacity: 0.6;
+    }
+
+    .approve-button {
+      border: 1px solid #bbf7d0;
+
+      background: var(--green-soft);
+
+      color: #15803d;
+    }
+
+    .reject-button {
+      border: 1px solid #fecaca;
+
+      background: var(--red-soft);
+
+      color: var(--red-dark);
+    }
+
+    .review-action-message {
+      margin-top: 9px;
+
+      padding: 8px 9px;
+
+      border: 1px solid var(--border);
+      border-radius: 8px;
+
+      background: #ffffff;
+
+      color: var(--text-secondary);
+
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .empty-detail {
+      padding: 28px 18px;
+
+      color: var(--muted);
+
+      font-size: 13px;
+
+      text-align: center;
+    }
+
+    @media (max-width: 1100px) {
+      .stats {
+        grid-template-columns:
+          repeat(
+            3,
+            minmax(0, 1fr)
+          );
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .shell {
+        width: min(
+          100% - 28px,
+          1480px
+        );
+
+        padding-top: 18px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+
+        flex-direction: column;
+      }
+
+      .top-actions {
+        width: 100%;
+
+        justify-content: space-between;
+      }
+
+      .stats {
+        grid-template-columns:
+          repeat(
+            2,
+            minmax(0, 1fr)
+          );
+      }
+
+      .panel-header {
+        align-items: flex-start;
+
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ======================================
+       REVIEWER LOGIN
+  ======================================= -->
+
+  <section
+    id="login-screen"
+    class="login-screen"
+  >
+
+    <div class="login-card">
+
+      <div class="login-brand">
+
+        <div class="login-eyebrow">
+          SENTINEL PRIVACY SECURITY
+        </div>
+
+        <h1 class="login-title">
+          Reviewer Access
+        </h1>
+
+        <p class="login-subtitle">
+          Authenticate to access the security control plane.
+        </p>
+
+      </div>
+
+
+      <form
+        id="login-form"
+        class="login-form"
+      >
+
+        <div class="field">
+
+          <label for="username">
+            Username
+          </label>
+
+          <input
+            id="username"
+            type="text"
+            autocomplete="username"
+            placeholder="Reviewer username"
+            required
+          >
+
+        </div>
+
+
+        <div class="field">
+
+          <label for="password">
+            Password
+          </label>
+
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Reviewer password"
+            required
+          >
+
+        </div>
+
+
+        <div
+          id="login-error"
+          class="login-error hidden"
+        ></div>
+
+
+        <button
+          id="login-button"
+          class="login-button"
+          type="submit"
+        >
+          Sign in as Reviewer
+        </button>
+
+      </form>
+
+    </div>
+
+  </section>
+
+
+  <!-- ======================================
+       DASHBOARD
+  ======================================= -->
+
+  <div
+    id="dashboard-screen"
+    class="hidden"
+  >
+
+    <div class="shell">
+
+      <header class="topbar">
+
+        <div>
+
+          <div class="eyebrow">
+            SENTINEL PRIVACY SECURITY
+          </div>
+
+          <h1>
+            Security Dashboard
+          </h1>
+
+          <p class="subtitle">
+            Security control plane for intercepted AI traffic.
+          </p>
+
+        </div>
+
+
+        <div class="top-actions">
+
+          <div class="reviewer">
+
+            <span class="reviewer-dot"></span>
+
+            Reviewer:
+            <span id="reviewer-name">
+              —
+            </span>
+
+          </div>
+
+
+          <button
+            id="clear-cache-button"
+            class="logout-button"
+            type="button"
+          >
+            Clear cached reports
+          </button>
+
+          <button
+            id="logout-button"
+            class="logout-button"
+            type="button"
+          >
+            Sign out
+          </button>
+
+        </div>
+
+      </header>
+
+
+      <section class="stats">
+
+        <article class="stat-card">
+
+          <div class="stat-label">
+            Total Events
+          </div>
+
+          <div
+            id="total"
+            class="stat-value"
+          >
+            —
+          </div>
+
+        </article>
+
+
+        <article class="stat-card stat-allowed">
+
+          <div class="stat-label">
+            Allowed
+          </div>
+
+          <div
+            id="allowed"
+            class="stat-value"
+          >
+            —
+          </div>
+
+        </article>
+
+
+        <article class="stat-card stat-redacted">
+
+          <div class="stat-label">
+            Redacted
+          </div>
+
+          <div
+            id="redacted"
+            class="stat-value"
+          >
+            —
+          </div>
+
+        </article>
+
+
+        <article class="stat-card stat-blocked">
+
+          <div class="stat-label">
+            Blocked
+          </div>
+
+          <div
+            id="blocked"
+            class="stat-value"
+          >
+            —
+          </div>
+
+        </article>
+
+
+        <article class="stat-card stat-incomplete">
+          <div class="stat-label">Incomplete</div>
+          <div id="incomplete" class="stat-value">—</div>
+        </article>
+
+
+        <article class="stat-card stat-pending">
+
+          <div class="stat-label">
+            Pending Review
+          </div>
+
+          <div
+            id="pending"
+            class="stat-value"
+          >
+            —
+          </div>
+
+        </article>
+
+      </section>
+
+
+      <main class="layout">
+
+
+        <!-- =================================
+             EVENT TABLE
+        ================================== -->
+
+        <section class="panel">
+
+          <div class="panel-header">
+
+            <div>
+
+              <h2 class="panel-title">
+                Security Events
+              </h2>
+
+              <p class="panel-description">
+                Recent decisions recorded by Guardian.
+              </p>
+
+            </div>
+
+
+            <div class="filters">
+
+              <button
+                class="filter-button active"
+                data-state=""
+              >
+                All
+              </button>
+
+
+              <button
+                class="filter-button"
+                data-state="PENDING_APPROVAL"
+              >
+                Pending
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="table-state"
+            class="table-state"
+          >
+            Loading security events…
+          </div>
+
+
+          <div
+            id="table-wrap"
+            class="table-wrap hidden"
+          >
+
+            <table>
+
+              <thead>
+
+                <tr>
+
+                  <th>
+                    Time
+                  </th>
+
+                  <th>
+                    Site
+                  </th>
+
+                  <th>
+                    Type
+                  </th>
+
+                  <th>
+                    Detection
+                  </th>
+
+                  <th>
+                    Risk
+                  </th>
+
+                  <th>
+                    Decision
+                  </th>
+
+                  <th>
+                    Status
+                  </th>
+
+                </tr>
+
+              </thead>
+
+
+              <tbody
+                id="event-body"
+              ></tbody>
+
+            </table>
+
+          </div>
+
+        </section>
+
+
+        <!-- =================================
+             EVENT DETAILS
+        ================================== -->
+
+        <aside class="panel">
+
+          <div class="panel-header">
+
+            <div>
+
+              <h2 class="panel-title">
+                Event Details
+              </h2>
+
+              <p class="panel-description">
+                Select an event to inspect it.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="detail-state"
+            class="empty-detail"
+          >
+            No event selected.
+          </div>
+
+
+          <div
+            id="detail"
+            class="hidden"
+          ></div>
+
+        </aside>
+
+
+      </main>
+
+    </div>
+
+  </div>
+
+
+  <!-- ======================================
+       DASHBOARD LOGIC
+  ======================================= -->
+
+  <script>
+
+    const API_BASE =
+      "http://127.0.0.1:8000/dashboard";
+
+
+    const TOKEN_KEY =
+      "ai_guardian_reviewer_token";
+
+
+    const USERNAME_KEY =
+      "ai_guardian_reviewer_username";
+
+
+    const dashboardState = {
+      filter: "",
+      events: []
+    };
+
+
+    function $(id) {
+      return document.getElementById(
+        id
+      );
+    }
+
+
+    function escapeHtml(value) {
+
+      return String(
+        value ?? ""
+      ).replace(
+        /[&<>"']/g,
+        (character) => {
+
+          const entities = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+          };
+
+          return entities[
+            character
+          ];
+        }
+      );
+    }
+
+
+    function getToken() {
+
+      return sessionStorage.getItem(
+        TOKEN_KEY
+      );
+    }
+
+
+    function saveSession(
+      token,
+      username
+    ) {
+
+      sessionStorage.setItem(
+        TOKEN_KEY,
+        token
+      );
+
+      sessionStorage.setItem(
+        USERNAME_KEY,
+        username
+      );
+    }
+
+
+    function clearSession() {
+
+      sessionStorage.removeItem(
+        TOKEN_KEY
+      );
+
+      sessionStorage.removeItem(
+        USERNAME_KEY
+      );
+    }
+
+
+    function showLogin() {
+
+      $("login-screen")
+        .classList.remove(
+          "hidden"
+        );
+
+      $("dashboard-screen")
+        .classList.add(
+          "hidden"
+        );
+
+      $("password").value = "";
+
+      $("username").focus();
+    }
+
+
+    function showDashboard(
+      username
+    ) {
+
+      $("login-screen")
+        .classList.add(
+          "hidden"
+        );
+
+      $("dashboard-screen")
+        .classList.remove(
+          "hidden"
+        );
+
+      $("reviewer-name")
+        .textContent =
+        username;
+    }
+
+
+    function formatTime(value) {
+
+      const date =
+        new Date(value);
+
+
+      if (
+        Number.isNaN(
+          date.getTime()
+        )
+      ) {
+
+        return escapeHtml(
+          value
+        );
+
+      }
+
+
+      return escapeHtml(
+        date.toLocaleString()
+      );
+    }
+
+
+    function decisionClass(
+      decision
+    ) {
+
+      if (decision === "INCOMPLETE") {
+        return "badge-redact";
+      }
+
+      if (
+        decision === "ALLOW"
+      ) {
+
+        return "badge-allow";
+
+      }
+
+
+      if (
+        decision === "REDACT"
+      ) {
+
+        return "badge-redact";
+
+      }
+
+
+      return "badge-block";
+    }
+
+
+    async function apiFetch(
+      url,
+      options = {}
+    ) {
+
+      const headers = {
+        ...(options.headers || {})
+      };
+
+
+      const token =
+        getToken();
+
+
+      if (token) {
+
+        headers.Authorization =
+          `Bearer ${token}`;
+
+      }
+
+
+      const response =
+        await fetch(
+          url,
+          {
+            ...options,
+            headers
+          }
+        );
+
+
+      if (
+        response.status === 401
+      ) {
+
+        clearSession();
+
+        showLogin();
+
+        throw new Error(
+          "SESSION_EXPIRED"
+        );
+
+      }
+
+
+      return response;
+    }
+
+
+    async function loadSummary() {
+
+      const response =
+        await apiFetch(
+          `${API_BASE}/summary`
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          "Summary request failed."
+        );
+
+      }
+
+
+      const summary =
+        await response.json();
+
+
+      $("total").textContent =
+        summary.total ?? 0;
+
+
+      $("allowed").textContent =
+        summary.allowed ?? 0;
+
+
+      $("redacted").textContent =
+        summary.redacted ?? 0;
+
+
+      $("blocked").textContent =
+        summary.blocked ?? 0;
+
+      $("incomplete").textContent =
+        summary.incomplete ?? 0;
+
+
+      $("pending").textContent =
+        summary.pending ?? 0;
+    }
+
+
+    function renderDetections(
+      event
+    ) {
+
+      const entities =
+        Array.isArray(
+          event.entities
+        )
+          ? event.entities
+          : [];
+
+
+      if (
+        !entities.length
+      ) {
+
+        return "None";
+
+      }
+
+
+      return entities
+        .map(
+          (entity) =>
+            `${entity.entity_type || "UNKNOWN"} × ${entity.count ?? 1}`
+        )
+        .join(", ");
+    }
+
+
+    function renderEvents() {
+
+      const stateBox =
+        $("table-state");
+
+
+      const tableWrap =
+        $("table-wrap");
+
+
+      const body =
+        $("event-body");
+
+
+      body.innerHTML = "";
+
+
+      if (
+        !dashboardState
+          .events
+          .length
+      ) {
+
+        stateBox.textContent =
+          "No security events match this view.";
+
+
+        stateBox.classList.remove(
+          "hidden"
+        );
+
+
+        tableWrap.classList.add(
+          "hidden"
+        );
+
+
+        return;
+      }
+
+
+      stateBox.classList.add(
+        "hidden"
+      );
+
+
+      tableWrap.classList.remove(
+        "hidden"
+      );
+
+
+      dashboardState.events.forEach(
+        (event) => {
+
+          const row =
+            document.createElement(
+              "tr"
+            );
+
+
+          row.className =
+            "event-row";
+
+
+          const statusClass =
+            event.state ===
+            "PENDING_APPROVAL"
+              ? "badge-pending"
+              : decisionClass(
+                  event.decision
+                );
+
+
+          row.innerHTML = `
+
+            <td>
+              ${formatTime(
+                event.timestamp
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                event.site
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                event.input_type
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                renderDetections(
+                  event
+                )
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                event.risk
+              )}
+            </td>
+
+            <td>
+
+              <span
+                class="badge ${decisionClass(
+                  event.decision
+                )}"
+              >
+                ${escapeHtml(
+                  event.decision
+                )}
+              </span>
+
+            </td>
+
+            <td>
+
+              <span
+                class="badge ${statusClass}"
+              >
+                ${escapeHtml(
+                  event.state
+                )}
+              </span>
+
+            </td>
+
+          `;
+
+
+          row.addEventListener(
+            "click",
+            () => {
+              loadEventDetail(
+                event.id
+              );
+            }
+          );
+
+
+          body.appendChild(
+            row
+          );
+
+        }
+      );
+    }
+
+
+    function renderAudit(
+      audit
+    ) {
+
+      if (
+        !Array.isArray(
+          audit
+        )
+        || !audit.length
+      ) {
+
+        return `
+          <div class="empty-detail">
+            No audit events.
+          </div>
+        `;
+
+      }
+
+
+      return audit
+        .map(
+          (item) => `
+
+            <div class="audit-item">
+
+              <div class="audit-top">
+
+                <strong>
+                  ${escapeHtml(
+                    item.action
+                  )}
+                </strong>
+
+                <span>
+                  ${formatTime(
+                    item.timestamp
+                  )}
+                </span>
+
+              </div>
+
+
+              <div class="audit-detail">
+
+                Actor:
+                ${escapeHtml(
+                  item.actor
+                )}
+
+                ${
+                  item.detail
+                    ? ` · ${escapeHtml(
+                        item.detail
+                      )}`
+                    : ""
+                }
+
+              </div>
+
+            </div>
+
+          `
+        )
+        .join("");
+    }
+
+
+    function renderDetail(
+      event
+    ) {
+
+      const detailState =
+        $("detail-state");
+
+
+      const detail =
+        $("detail");
+
+
+      const detections =
+        Array.isArray(
+          event.entities
+        )
+          ? event.entities
+          : [];
+
+      const coverage = event.coverage || {};
+      const coverageSummary = [
+        `Format: ${coverage.format || event.input_type || "unknown"}`,
+        `Overall: ${coverage.complete === false ? "INCOMPLETE" : "recorded"}`,
+        coverage.layers_inspected?.length ? `Inspected: ${coverage.layers_inspected.join(", ")}` : "",
+        coverage.unsupported_layers?.length ? `Unsupported: ${coverage.unsupported_layers.join(", ")}` : "",
+        coverage.ocr_page_limit ? `OCR pages: ${coverage.ocr_pages_processed || 0}/${coverage.ocr_page_limit}` : "",
+      ].filter(Boolean).join(" · ");
+
+
+      detail.innerHTML = `
+
+        <div class="detail">
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Event ID
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.id
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Time
+            </span>
+
+            <span class="detail-value">
+              ${formatTime(
+                event.timestamp
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              User
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.username
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Site
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.site
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Input
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.input_type
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Filename
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.filename ||
+                "—"
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+            <span class="detail-key">File size / SHA-256</span>
+            <span class="detail-value">
+              ${escapeHtml(event.byte_count ?? "—")} bytes · ${escapeHtml(event.sha256_fingerprint || "—")}
+            </span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-key">Scan provenance</span>
+            <span class="detail-value">
+              ${escapeHtml(event.scan_mode || "unknown")} · ${escapeHtml(event.enforcement_mode || "unknown")} · ${escapeHtml(event.report_source || "unknown")}
+              ${event.analysis_timestamp ? ` · analyzed ${escapeHtml(formatTime(event.analysis_timestamp))}` : ""}
+            </span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-key">Inspection coverage</span>
+            <span class="detail-value">${escapeHtml(coverageSummary || "Coverage metadata unavailable.")}</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-key">
+              Risk
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.risk
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Decision
+            </span>
+
+            <span class="detail-value">
+
+              <span
+                class="badge ${decisionClass(
+                  event.decision
+                )}"
+              >
+                ${escapeHtml(
+                  event.decision
+                )}
+              </span>
+
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Status
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.state
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="detail-row">
+
+            <span class="detail-key">
+              Reason
+            </span>
+
+            <span class="detail-value">
+              ${escapeHtml(
+                event.status_detail ||
+                "Security policy decision recorded."
+              )}
+            </span>
+
+          </div>
+
+
+
+          <div
+            id="review-actions"
+            class="review-actions hidden"
+          >
+
+            <div class="review-actions-title">
+              Reviewer Action
+            </div>
+
+            <p class="review-actions-description">
+              This blocked event requires an explicit reviewer decision.
+            </p>
+
+            <div class="review-buttons">
+
+              <button
+                id="approve-event-button"
+                class="review-button approve-button"
+                type="button"
+              >
+                Approve
+              </button>
+
+              <button
+                id="reject-event-button"
+                class="review-button reject-button"
+                type="button"
+              >
+                Reject
+              </button>
+
+            </div>
+
+            <div
+              id="review-action-message"
+              class="review-action-message hidden"
+            ></div>
+
+          </div>
+
+
+          <div class="section">
+
+            <h3 class="section-title">
+              Detections
+            </h3>
+
+
+            <div class="chips">
+
+              ${
+                detections.length
+                  ? detections
+                      .map(
+                        (item) => `
+                          <span class="chip">
+                            ${escapeHtml(
+                              item.entity_type
+                            )}
+                            ×
+                            ${escapeHtml(
+                              item.count ?? 1
+                            )}
+                            ${item.source_layer ? ` · ${escapeHtml(item.source_layer)}` : ""}
+                            ${item.metadata_field ? `/${escapeHtml(item.metadata_field)}` : ""}
+                            ${item.detector ? ` · ${escapeHtml(item.detector)}` : ""}
+                            ${typeof item.average_confidence === "number" ? ` · conf ${escapeHtml(item.average_confidence)}` : ""}
+                          </span>
+                        `
+                      )
+                      .join("")
+                  : `
+                      <span class="chip">
+                        None
+                      </span>
+                    `
+              }
+
+            </div>
+
+          </div>
+
+
+          <div class="section">
+
+            <h3 class="section-title">
+              Audit Trail
+            </h3>
+
+            ${renderAudit(
+              event.audit
+            )}
+
+          </div>
+
+        </div>
+
+      `;
+
+
+      detailState.classList.add(
+        "hidden"
+      );
+
+
+      detail.classList.remove(
+        "hidden"
+      );
+
+
+      const reviewActions =
+        $("review-actions");
+
+      const approveButton =
+        $("approve-event-button");
+
+      const rejectButton =
+        $("reject-event-button");
+
+      const reviewMessage =
+        $("review-action-message");
+
+
+      if (
+        reviewActions &&
+        approveButton &&
+        rejectButton &&
+        reviewMessage
+      ) {
+
+        const reviewable =
+          event.state ===
+            "BLOCKED" ||
+          event.state ===
+            "PENDING_APPROVAL";
+
+
+        if (reviewable) {
+
+          reviewActions.classList.remove(
+            "hidden"
+          );
+
+          reviewMessage.classList.add(
+            "hidden"
+          );
+
+          approveButton.onclick =
+            () => reviewEvent(
+              event.id,
+              "approve"
+            );
+
+          rejectButton.onclick =
+            () => reviewEvent(
+              event.id,
+              "reject"
+            );
+
+        } else {
+
+          reviewActions.classList.add(
+            "hidden"
+          );
+
+          approveButton.onclick = null;
+
+          rejectButton.onclick = null;
+
+          reviewMessage.classList.add(
+            "hidden"
+          );
+
+        }
+      }
+    }
+
+
+
+    async function reviewEvent(
+      eventId,
+      action
+    ) {
+
+      const approveButton =
+        $("approve-event-button");
+
+      const rejectButton =
+        $("reject-event-button");
+
+      const message =
+        $("review-action-message");
+
+
+      if (
+        !approveButton ||
+        !rejectButton ||
+        !message
+      ) {
+        return;
+      }
+
+
+      approveButton.disabled = true;
+
+      rejectButton.disabled = true;
+
+      message.classList.add(
+        "hidden"
+      );
+
+
+      try {
+
+        const response =
+          await apiFetch(
+            `${API_BASE}/events/${encodeURIComponent(
+              eventId
+            )}/${action}`,
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body: JSON.stringify({})
+            }
+          );
+
+
+        const body =
+          await response.json();
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+            body.detail ||
+            `Could not ${action} event.`
+          );
+
+        }
+
+
+        renderDetail(
+          body
+        );
+
+
+        const updatedMessage =
+          $("review-action-message");
+
+        if (updatedMessage) {
+
+          updatedMessage.textContent =
+            action === "approve"
+              ? "Event approved."
+              : "Event rejected.";
+
+          updatedMessage.classList.remove(
+            "hidden"
+          );
+        }
+
+
+        await Promise.all([
+          loadSummary(),
+          loadEvents()
+        ]);
+
+      } catch (error) {
+
+        if (
+          error.message ===
+          "SESSION_EXPIRED"
+        ) {
+          return;
+        }
+
+
+        console.error(
+          error
+        );
+
+
+        message.textContent =
+          error.message ||
+          "Reviewer action failed.";
+
+
+        message.classList.remove(
+          "hidden"
+        );
+
+      } finally {
+
+        approveButton.disabled = false;
+
+        rejectButton.disabled = false;
+
+      }
+    }
+
+
+    async function loadEventDetail(
+      eventId
+    ) {
+
+      const detailState =
+        $("detail-state");
+
+
+      const detail =
+        $("detail");
+
+
+      detailState.textContent =
+        "Loading event…";
+
+
+      detailState.classList.remove(
+        "hidden"
+      );
+
+
+      detail.classList.add(
+        "hidden"
+      );
+
+
+      try {
+
+        const response =
+          await apiFetch(
+            `${API_BASE}/events/${encodeURIComponent(
+              eventId
+            )}`
+          );
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+            "Detail request failed."
+          );
+
+        }
+
+
+        const event =
+          await response.json();
+
+
+        renderDetail(
+          event
+        );
+
+      } catch (error) {
+
+        if (
+          error.message ===
+          "SESSION_EXPIRED"
+        ) {
+          return;
+        }
+
+
+        console.error(
+          error
+        );
+
+
+        detailState.textContent =
+          "Could not load event details.";
+
+      }
+    }
+
+
+    async function loadEvents() {
+
+      const url =
+        new URL(
+          `${API_BASE}/events`
+        );
+
+
+      if (
+        dashboardState.filter
+      ) {
+
+        url.searchParams.set(
+          "state",
+          dashboardState.filter
+        );
+
+      }
+
+
+      const response =
+        await apiFetch(
+          url
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          "Events request failed."
+        );
+
+      }
+
+
+      dashboardState.events =
+        await response.json();
+
+
+      renderEvents();
+    }
+
+
+    async function refreshDashboard() {
+
+      if (
+        !getToken()
+      ) {
+        return;
+      }
+
+
+      try {
+
+        await Promise.all([
+          loadSummary(),
+          loadEvents()
+        ]);
+
+      } catch (error) {
+
+        if (
+          error.message ===
+          "SESSION_EXPIRED"
+        ) {
+          return;
+        }
+
+        console.error(
+          error
+        );
+
+        $("table-state").textContent =
+          "Dashboard API unavailable.";
+
+        $("table-state")
+          .classList.remove(
+            "hidden"
+          );
+
+        $("table-wrap")
+          .classList.add(
+            "hidden"
+          );
+      }
+    }
+
+
+    async function login(
+      username,
+      password
+    ) {
+
+      const response =
+        await fetch(
+          `${API_BASE}/login`,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body: JSON.stringify({
+              username,
+              password
+            })
+          }
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        let message =
+          "Invalid reviewer credentials.";
+
+        try {
+
+          const body =
+            await response.json();
+
+          if (
+            body.detail
+          ) {
+            message =
+              body.detail;
+          }
+
+        } catch {
+          // Keep the default message.
+        }
+
+
+        throw new Error(
+          message
+        );
+      }
+
+
+      return response.json();
+    }
+
+
+    async function logout() {
+
+      const token =
+        getToken();
+
+
+      if (!token) {
+
+        clearSession();
+
+        showLogin();
+
+        return;
+      }
+
+
+      try {
+
+        await fetch(
+          `${API_BASE}/logout`,
+          {
+            method: "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`
+            }
+          }
+        );
+
+      } catch {
+        // Local logout still occurs
+        // even if the server is unavailable.
+      }
+
+
+      clearSession();
+
+      showLogin();
+    }
+
+
+    async function checkExistingSession() {
+
+      const token =
+        getToken();
+
+
+      const username =
+        sessionStorage.getItem(
+          USERNAME_KEY
+        );
+
+
+      if (
+        !token ||
+        !username
+      ) {
+
+        showLogin();
+
+        return;
+
+      }
+
+
+      try {
+
+        const response =
+          await apiFetch(
+            `${API_BASE}/me`
+          );
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+            "Session invalid."
+          );
+
+        }
+
+
+        const data =
+          await response.json();
+
+
+        showDashboard(
+          data.username
+        );
+
+
+        await refreshDashboard();
+
+      } catch {
+
+        clearSession();
+
+        showLogin();
+
+      }
+    }
+
+
+    $("login-form")
+      .addEventListener(
+        "submit",
+        async (event) => {
+
+          event.preventDefault();
+
+
+          const button =
+            $("login-button");
+
+
+          const errorBox =
+            $("login-error");
+
+
+          const username =
+            $("username")
+              .value
+              .trim();
+
+
+          const password =
+            $("password")
+              .value;
+
+
+          errorBox.classList.add(
+            "hidden"
+          );
+
+
+          button.disabled =
+            true;
+
+
+          button.textContent =
+            "Signing in…";
+
+
+          try {
+
+            const data =
+              await login(
+                username,
+                password
+              );
+
+
+            saveSession(
+              data.token,
+              data.username
+            );
+
+
+            showDashboard(
+              data.username
+            );
+
+
+            await refreshDashboard();
+
+          } catch (error) {
+
+            errorBox.textContent =
+              error.message;
+
+            errorBox.classList.remove(
+              "hidden"
+            );
+
+          } finally {
+
+            button.disabled =
+              false;
+
+            button.textContent =
+              "Sign in as Reviewer";
+
+          }
+
+        }
+      );
+
+
+    $("clear-cache-button")
+      .addEventListener("click", async () => {
+        if (!window.confirm("Clear all cached scan reports? Audit history will remain.")) return;
+        const button = $("clear-cache-button");
+        button.disabled = true;
+        try {
+          const response = await apiFetch("/dashboard/cache", { method: "DELETE" });
+          if (!response.ok) throw new Error("Could not clear cached reports.");
+          const result = await response.json();
+          button.textContent = `Cleared ${result.cleared}; audit history preserved`;
+          setTimeout(() => { if (button.isConnected) button.textContent = "Clear cached reports"; }, 3500);
+        } catch (error) {
+          window.alert(error.message || "Could not clear cached reports.");
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+
+    $("logout-button")
+      .addEventListener(
+        "click",
+        logout
+      );
+
+
+    document
+      .querySelectorAll(
+        ".filter-button"
+      )
+      .forEach(
+        (button) => {
+
+          button.addEventListener(
+            "click",
+            async () => {
+
+              document
+                .querySelectorAll(
+                  ".filter-button"
+                )
+                .forEach(
+                  (item) => {
+
+                    item.classList.remove(
+                      "active"
+                    );
+
+                  }
+                );
+
+
+              button.classList.add(
+                "active"
+              );
+
+
+              dashboardState.filter =
+                button.dataset.state ||
+                "";
+
+
+              try {
+
+                await loadEvents();
+
+              } catch (error) {
+
+                console.error(
+                  error
+                );
+
+              }
+
+            }
+          );
+
+        }
+      );
+
+
+    checkExistingSession();
+
+
+    setInterval(
+      refreshDashboard,
+      5000
+    );
+
+  </script>
+
+</body>
+</html>

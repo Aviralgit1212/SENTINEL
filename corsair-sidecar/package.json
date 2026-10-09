@@ -1,0 +1,14 @@
+{
+	"dependencies": {
+		"@corsair-dev/cli": "^0.1.21",
+		"@corsair-dev/slack": "^0.1.8",
+		"better-sqlite3": "^13.0.3",
+		"corsair": "^0.1.129",
+		"dotenv": "^17.4.2"
+	},
+	"devDependencies": {
+		"@types/better-sqlite3": "^9.6.0",
+		"@types/node": "^22.20.2",
+		"tsx": "^4.23.13"
+	}
+}

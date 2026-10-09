@@ -1,0 +1,40 @@
+{
+  "rules": {
+    "EMAIL_ADDRESS": {
+      "sensitive": true,
+      "label": "Email Address"
+    },
+    "PHONE_NUMBER": {
+      "sensitive": true,
+      "label": "Phone Number"
+    },
+    "CREDIT_CARD": {
+      "sensitive": true,
+      "label": "Credit Card"
+    },
+    "US_SSN": {
+      "sensitive": true,
+      "label": "US Social Security Number"
+    },
+    "PERSON": {
+      "sensitive": true,
+      "label": "Person Name"
+    },
+    "IN_AADHAAR": {
+      "sensitive": true,
+      "label": "Aadhaar candidate (Verhoeff validated)"
+    },
+    "IN_PAN": {
+      "sensitive": true,
+      "label": "Indian PAN-like identifier"
+    },
+    "IN_IFSC": {
+      "sensitive": true,
+      "label": "Indian IFSC-like code"
+    },
+    "CREDENTIAL_TOKEN": {
+      "sensitive": true,
+      "label": "Credential-like token"
+    }
+  }
+}
