@@ -451,6 +451,27 @@ freshclam
 brew services start clamav
 ```
 
+#### Windows (PowerShell / Winget / Chocolatey):
+```powershell
+# Option A: Via Winget (Windows Package Manager)
+winget install ClamAV.ClamAV
+
+# Option B: Via Chocolatey
+choco install clamav
+
+# Initial signature download & background service
+cd "C:\Program Files\ClamAV"
+copy .\conf_examples\freshclam.conf.sample .\freshclam.conf
+copy .\conf_examples\clamd.conf.sample .\clamd.conf
+# Remove 'Example' line from configs
+(Get-Content .\freshclam.conf) | Where-Object { $_ -ne 'Example' } | Set-Content .\freshclam.conf
+(Get-Content .\clamd.conf) | Where-Object { $_ -ne 'Example' } | Set-Content .\clamd.conf
+# Update signatures and launch daemon
+.\freshclam.exe
+.\clamd.exe --install
+Start-Service ClamAV
+```
+
 #### Verification:
 ```bash
 # Check daemon socket or port
@@ -463,10 +484,14 @@ python main.py --test
 
 #### Semgrep (Static Code Analysis):
 ```bash
-# Via Python pip (recommended)
+# Cross-Platform (pip / Windows PowerShell / macOS / Linux)
 pip install semgrep
-# Via Homebrew (macOS)
+
+# macOS (Homebrew)
 brew install semgrep
+
+# Windows (Winget / WSL)
+winget install semgrep
 
 # Configure in .env (optional):
 # SENTINEL_SEMGREP_CONFIG=p/default
@@ -476,8 +501,16 @@ brew install semgrep
 ```bash
 # Linux (binary)
 curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz -C /usr/local/bin
+
 # macOS
 brew install gitleaks
+
+# Windows (Winget / Chocolatey / Scoop)
+winget install zricethezav.gitleaks
+# or
+choco install gitleaks
+# or
+scoop install gitleaks
 ```
 
 #### Trivy (Filesystem & Container Security):
@@ -490,14 +523,27 @@ sudo apt-get update && sudo apt-get install -y trivy
 
 # macOS
 brew install trivy
+
+# Windows (Winget / Chocolatey / Scoop)
+winget install AquaSecurity.Trivy
+# or
+choco install trivy
+# or
+scoop install trivy
 ```
 
 #### OSV-Scanner (Google Open Source Vulnerabilities):
 ```bash
-# Via Go
+# Cross-Platform (Go)
 go install github.com/google/osv-scanner/cmd/osv-scanner@latest
-# Via Homebrew
+
+# macOS
 brew install osv-scanner
+
+# Windows (Winget / Scoop)
+winget install Google.OSV-Scanner
+# or
+scoop install osv-scanner
 ```
 
 ---
