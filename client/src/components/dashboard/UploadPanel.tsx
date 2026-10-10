@@ -40,7 +40,7 @@ export default function UploadPanel({ onSelected }: Props) {
     >
       <div>
         <h2 id="upload-title">Drop a file here</h2>
-        <p>or choose one from your device. PDF, DOCX, PNG and JPG are supported.</p>
+        <p>or choose one from your device. PDF, DOCX, EXE and JSON are supported.</p>
       </div>
 
       <input
