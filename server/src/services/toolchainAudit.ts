@@ -65,6 +65,17 @@ export async function runToolchainAudit(source: string, filename: string): Promi
       const oParsed = parseJsonArray(o.stdout)
       runs.push({tool:'osv-scanner',state:o.timedOut?'timed_out':o.error?'blocked':oParsed===undefined?'failed':o.code===0||o.code===1?'completed':'failed',exitCode:o.code,durationMs:o.durationMs,summary:o.error || (o.stderr.slice(0,300) || `OSV-Scanner exited ${o.code}`),findings:oParsed})
     }
+    const trivyBin = process.env.SENTINEL_TRIVY_BIN || 'trivy'
+    const t = await run(trivyBin, ['fs', '--format', 'json', '--quiet', dir], dir)
+    const tParsed = parseJsonArray(t.stdout)
+    runs.push({
+      tool: 'trivy',
+      state: t.timedOut ? 'timed_out' : t.error ? 'blocked' : tParsed === undefined ? 'failed' : t.code === 0 ? 'completed' : 'failed',
+      exitCode: t.code,
+      durationMs: t.durationMs,
+      summary: t.error || (t.stderr.slice(0, 300) || `Trivy exited ${t.code}`),
+      findings: tParsed,
+    })
   } catch (e) {
     notes.push(`Toolchain setup failed: ${String(e).slice(0,240)}`)
   } finally { if (dir) await rm(dir, {recursive:true,force:true}).catch(()=>undefined) }

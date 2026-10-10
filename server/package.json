@@ -12,6 +12,7 @@
     "calibrate": "tsx scripts/calibrate-analyzers.ts"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1"

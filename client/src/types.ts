@@ -135,6 +135,7 @@ export interface ScanReport {
   filename: string
   size: number
   sha256: string
+  blake3?: string
   coverage: CoverageEntry[]
   threat: ThreatResult | null
   privacy: PrivacyResult | null

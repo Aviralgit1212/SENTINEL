@@ -115,6 +115,7 @@ router.post('/scans', upload.single('file'), async (req: Request, res: Response)
       filename: file.originalname,
       size: file.size,
       sha256: result.sha256,
+      blake3: result.blake3,
       coverage: result.coverage,
       threat: result.threat,
       privacy: null,

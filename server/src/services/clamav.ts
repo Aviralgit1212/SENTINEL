@@ -179,6 +179,23 @@ export function sha256File(filePath: string): Promise<string> {
   })
 }
 
+export async function blake3File(filePath: string): Promise<string> {
+  const { blake3 } = await import('@noble/hashes/blake3.js')
+  const { open } = await import('node:fs/promises')
+  const handle = await open(filePath, 'r')
+  try {
+    const hasher = blake3.create({})
+    const buffer = Buffer.alloc(64 * 1024)
+    let bytesRead = 0
+    while ((bytesRead = (await handle.read(buffer, 0, buffer.length)).bytesRead) > 0) {
+      hasher.update(buffer.subarray(0, bytesRead))
+    }
+    return Buffer.from(hasher.digest()).toString('hex')
+  } finally {
+    await handle.close()
+  }
+}
+
 // Remove local filesystem paths from ClamAV output and bound returned evidence.
 function sanitizeClamOutput(output: string): string {
   const value = output.trim()
