@@ -212,6 +212,10 @@ const ScanSchema = new Schema(
             type: Schema.Types.Mixed,
             default: null,
         },
+        jsonAnalysis: {
+            type: Schema.Types.Mixed,
+            default: null,
+        },
 
         errorMessage: {
             type: String,
