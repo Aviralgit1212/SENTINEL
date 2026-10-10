@@ -39,8 +39,10 @@ button.primary:disabled, .button:disabled { opacity: 0.5; cursor: not-allowed; }
 .verdict.bad { color: #f87171; background: #f8717118; }
 .verdict-reason { color: #94a3b8; font-size: 13px; margin: 10px 0 0; }
 
-.coverage-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.coverage-grid .badge { padding: 5px 12px; }
+.coverage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 8px; }
+.coverage-item { display: flex; justify-content: space-between; align-items: center; background: #0d1319; border: 1px solid #29323d; border-radius: 6px; padding: 8px 12px; gap: 8px; }
+.coverage-name { font-size: 12px; font-family: ui-monospace, monospace; color: #d7e2ec; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coverage-item .badge { margin-right: 0; white-space: nowrap; }
 
 .finding { border: 1px solid #29323d; border-left-width: 3px; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; background: #0d1319; }
 .finding.sev-critical { border-left-color: #f87171; }

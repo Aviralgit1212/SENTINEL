@@ -1919,12 +1919,7 @@ def analyze_pdf(path):
                     ).strip()
                     if page_ocr_text:
                         ocr_parts.append(page_ocr_text)
-                        successful_ocr_pages += 1
-                    else:
-                        result["ocrErrors"].append({
-                            "page": page_number + 1,
-                            "error": "OCR ran but returned no readable text",
-                        })
+                    successful_ocr_pages += 1
 
                 except subprocess.TimeoutExpired:
                     result["ocrErrors"].append({

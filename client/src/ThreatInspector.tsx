@@ -25,9 +25,12 @@ function CoverageBadge({ entry }: { entry: CoverageEntry }) {
     not_applicable: '— n/a',
   }
   return (
-    <span className={`badge ${styles[entry.state] ?? 'muted'}`} title={entry.detail ?? ''}>
-      {entry.analyzer}: {labels[entry.state] ?? entry.state}
-    </span>
+    <div className={`coverage-item ${styles[entry.state] ?? 'muted'}`} title={entry.detail ?? ''}>
+      <span className="coverage-name">{entry.analyzer}</span>
+      <span className={`badge ${styles[entry.state] ?? 'muted'}`}>
+        {labels[entry.state] ?? entry.state}
+      </span>
+    </div>
   )
 }
 

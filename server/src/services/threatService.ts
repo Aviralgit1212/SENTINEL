@@ -168,7 +168,12 @@ export async function runThreatScan(input: ThreatScanInput): Promise<ThreatScanO
 
   // ClamAV check
   const antivirus = await scanWithClamAV(filePath)
-  coverage.push({ analyzer: 'clamav', state: antivirus.state, detail: antivirus.detail })
+  const isOptionalClamav = process.env.SENTINEL_REQUIRE_CLAMAV === '0' || process.env.SENTINEL_OPTIONAL_CLAMAV === '1'
+  const clamState = (isOptionalClamav && antivirus.state === 'unavailable') ? 'not_applicable' : antivirus.state
+  const clamDetail = (isOptionalClamav && antivirus.state === 'unavailable')
+    ? `${antivirus.detail} (Marked optional by environment configuration)`
+    : antivirus.detail
+  coverage.push({ analyzer: 'clamav', state: clamState, detail: clamDetail })
   if (antivirus.state === 'finding') {
     findings.push({
       id: newId(),
