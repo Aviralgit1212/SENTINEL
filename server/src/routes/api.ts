@@ -35,7 +35,7 @@ import { currentAssessmentVersion } from '../services/assessmentVersion.js'
 import { compareAssessments } from '../services/timeMachine.js'
 import { privacyDecisionToVerdict, privacyDecisionReason } from '../services/verdictPolicy.js'
 import { registerPrivacyScanBinding, assertEntitiesBelongToScan } from '../services/scanBinding.js'
-import { getClamAVCapability } from '../services/clamav.js'
+import { getClamAVCapability, blake3File } from '../services/clamav.js'
 import { buildEvidenceDag } from '../services/evidenceDag.js'
 import { auditSource } from '../services/codeAudit.js'
 import { runToolchainAudit } from '../services/toolchainAudit.js'
@@ -555,11 +555,7 @@ router.use((error: unknown, _req: Request, res: Response, _next: (error?: unknow
 })
 
 async function hashFile(filePath: string): Promise<string> {
-  const { createReadStream } = await import('node:fs')
-  const { pipeline } = await import('node:stream/promises')
-  const hash = createHash('sha256')
-  await pipeline(createReadStream(filePath), hash)
-  return hash.digest('hex')
+  return blake3File(filePath)
 }
 
 export default router

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { blake3 } from '@noble/hashes/blake3.js'
 
 export interface UntrustedRedactionPayload {
   output_b64?: unknown
@@ -38,10 +39,13 @@ export function verifyRedactionPayload(body: UntrustedRedactionPayload): Verifie
   if (output.length === 0 || output.toString('base64') !== body.output_b64) {
     throw new Error('Redaction service returned malformed output encoding.')
   }
-  const actualHash = createHash('sha256').update(output).digest('hex')
-  if (actualHash !== body.output_sha256.toLowerCase()) {
+  const blake3Hash = Buffer.from(blake3(output)).toString('hex')
+  const sha256Hash = createHash('sha256').update(output).digest('hex')
+  const expectedHash = body.output_sha256.toLowerCase()
+  if (expectedHash !== blake3Hash && expectedHash !== sha256Hash) {
     throw new Error('Redaction service output hash does not match its bytes.')
   }
+  const actualHash = expectedHash === blake3Hash ? blake3Hash : sha256Hash
   if (output.length !== body.output_size) {
     throw new Error('Redaction service output size does not match its bytes.')
   }
