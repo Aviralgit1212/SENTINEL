@@ -12,7 +12,10 @@ DECISIONS = {"ALLOW", "REDACT", "BLOCK", "INCOMPLETE"}
 STATES = {
     "ALLOWED", "REDACTED", "BLOCKED", "INCOMPLETE", "PENDING_APPROVAL",
     "APPROVED", "REJECTED", "EXPIRED", "RELEASED",
+    "OVERRIDE_PENDING", "OVERRIDE_APPROVED", "OVERRIDE_REJECTED",
+    "OVERRIDE_RELEASED", "OVERRIDE_EXPIRED", "OVERRIDE_CANCELLED",
 }
+PENDING_REVIEW_STATES = ("BLOCKED", "PENDING_APPROVAL", "OVERRIDE_PENDING")
 
 
 def _now() -> str:
@@ -62,6 +65,23 @@ def init_db() -> None:
             action TEXT NOT NULL,
             timestamp TEXT NOT NULL,
             detail TEXT,
+            FOREIGN KEY(event_id) REFERENCES security_events(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS redaction_overrides (
+            event_id TEXT PRIMARY KEY,
+            token_hash TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            status TEXT NOT NULL,
+            offered_at TEXT NOT NULL,
+            requested_at TEXT,
+            expires_at TEXT NOT NULL,
+            approval_expires_at TEXT,
+            risk_acknowledged_at TEXT,
+            reviewed_by TEXT,
+            review_reason TEXT,
+            reviewed_at TEXT,
+            consumed_at TEXT,
             FOREIGN KEY(event_id) REFERENCES security_events(id) ON DELETE CASCADE
         );
 
@@ -186,8 +206,9 @@ def list_security_events(*, limit: int = 100, state: str | None = None) -> list[
         params = (limit,)
         sql += " ORDER BY timestamp DESC LIMIT ?"
     elif state == "PENDING_APPROVAL":
-        params = ("BLOCKED", "PENDING_APPROVAL", limit)
-        sql += " WHERE state IN (?,?) ORDER BY timestamp DESC LIMIT ?"
+        placeholders = ",".join("?" for _ in PENDING_REVIEW_STATES)
+        params = (*PENDING_REVIEW_STATES, limit)
+        sql += f" WHERE state IN ({placeholders}) ORDER BY timestamp DESC LIMIT ?"
     else:
         params = (state, limit)
         sql += " WHERE state=? ORDER BY timestamp DESC LIMIT ?"
@@ -272,8 +293,10 @@ def get_event_summary() -> dict[str, int]:
                 summary["blocked"] += count
             elif row["decision"] == "INCOMPLETE":
                 summary["incomplete"] += count
+        placeholders = ",".join("?" for _ in PENDING_REVIEW_STATES)
         summary["pending"] = int(db.execute(
-            "SELECT COUNT(*) count FROM security_events WHERE state IN ('BLOCKED','PENDING_APPROVAL')"
+            f"SELECT COUNT(*) count FROM security_events WHERE state IN ({placeholders})",
+            PENDING_REVIEW_STATES,
         ).fetchone()["count"])
     return summary
 

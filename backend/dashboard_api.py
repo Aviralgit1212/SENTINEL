@@ -6,7 +6,7 @@ from fastapi import (
     HTTPException,
     Query,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dashboard_auth import (
     authenticate_reviewer,
@@ -21,6 +21,15 @@ from dashboard_store import (
     get_security_event,
     list_security_events,
     update_event_state,
+)
+from override_store import (
+    review_override,
+    get_override_info,
+    expire_overrides,
+    OverrideNotFoundError,
+    OverrideStateError,
+    OverrideExpiredError,
+    OverrideForbiddenError,
 )
 from release_store import purge_held_payload
 from cache_store import cache_status, clear_cache
@@ -38,6 +47,10 @@ class LoginRequest(BaseModel):
 
 class ReviewActionRequest(BaseModel):
     detail: str | None = None
+
+
+class OverrideReviewRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=300)
 
 
 @router.post("/login")
@@ -141,6 +154,8 @@ def dashboard_summary(
         authorization
     )
 
+    expire_overrides()
+
     return get_event_summary()
 
 
@@ -185,6 +200,8 @@ def dashboard_events(
         authorization
     )
 
+    expire_overrides()
+
     try:
         return list_security_events(
             limit=limit,
@@ -213,6 +230,8 @@ def dashboard_event(
         authorization
     )
 
+    expire_overrides()
+
     event = get_security_event(
         event_id
     )
@@ -222,6 +241,10 @@ def dashboard_event(
             status_code=404,
             detail="Security event not found.",
         )
+
+    event["override"] = get_override_info(
+        event_id
+    )
 
     return event
 
@@ -392,3 +415,131 @@ def reject_event(
     purge_held_payload(event_id)
 
     return result
+
+
+def _review_override_event(
+    *,
+    event_id: str,
+    approve: bool,
+    reviewer: str,
+    reason: str,
+) -> dict:
+    """
+    Apply one reviewer decision on a redaction override request
+    and return the updated event including its "override" info.
+
+    override_store owns the override state machine; this only maps
+    its errors to HTTP responses.
+    """
+
+    try:
+        review_override(
+            event_id=event_id,
+            approve=approve,
+            reviewer=reviewer,
+            reason=reason,
+        )
+
+    except OverrideNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Override request not found.",
+        ) from exc
+
+    except OverrideExpiredError as exc:
+        raise HTTPException(
+            status_code=410,
+            detail="This override request has expired.",
+        ) from exc
+
+    except OverrideStateError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="This override cannot be reviewed in its current state.",
+        ) from exc
+
+    except OverrideForbiddenError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "A reviewer cannot approve or "
+                "reject their own event."
+            ),
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    updated_event = get_security_event(
+        event_id
+    )
+
+    if updated_event is None:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Event disappeared after "
+                "state transition."
+            ),
+        )
+
+    updated_event["override"] = get_override_info(
+        event_id
+    )
+
+    return updated_event
+
+
+@router.post(
+    "/events/{event_id}/override/approve"
+)
+def approve_override(
+    event_id: str,
+    request: OverrideReviewRequest,
+    authorization: str | None = Depends(
+        get_authorization,
+    ),
+) -> dict:
+    """
+    Approve releasing the ORIGINAL of a REDACTED file.
+    """
+
+    reviewer = require_reviewer(
+        authorization
+    )
+
+    return _review_override_event(
+        event_id=event_id,
+        approve=True,
+        reviewer=reviewer,
+        reason=request.reason,
+    )
+
+
+@router.post(
+    "/events/{event_id}/override/reject"
+)
+def reject_override(
+    event_id: str,
+    request: OverrideReviewRequest,
+    authorization: str | None = Depends(
+        get_authorization,
+    ),
+) -> dict:
+    """
+    Reject releasing the ORIGINAL of a REDACTED file.
+    """
+
+    reviewer = require_reviewer(
+        authorization
+    )
+
+    return _review_override_event(
+        event_id=event_id,
+        approve=False,
+        reviewer=reviewer,
+        reason=request.reason,
+    )

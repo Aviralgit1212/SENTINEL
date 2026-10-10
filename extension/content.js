@@ -129,6 +129,13 @@
   let heldFileMultiple = false;
   let fileSelectionCounter = 0;
 
+  // Redaction override: the ORIGINAL file held for an optional reviewer
+  // override. Deliberately separate from heldFile / heldDropTarget so the
+  // existing clear*State() functions cannot touch it.
+  // Shape: {eventId, file, kind:"picker"|"drop", input, container, accept,
+  //         multiple, dropTarget, attr, marker, consuming}
+  let heldOverride = null;
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "RELEASE_APPROVED") {
       handleApprovedRelease(message);
@@ -137,6 +144,15 @@
 
     if (message.type === "RELEASE_TERMINAL") {
       handleTerminalRelease(message);
+    }
+
+    if (message.type === "OVERRIDE_APPROVED") {
+      handleOverrideApproved(message);
+      return;
+    }
+
+    if (message.type === "OVERRIDE_TERMINAL") {
+      handleOverrideTerminal(message);
     }
   });
 
@@ -1495,6 +1511,712 @@
         }
       );
     }
+
+    if (
+      heldOverride &&
+      heldOverride.eventId === scanResult.event_id
+    ) {
+      appendOverrideSection(banner);
+    }
+  }
+
+
+  // --------------------------------------------------
+  // REDACTION OVERRIDE — reviewer-gated release of the ORIGINAL file
+  //
+  // The override context lives in `heldOverride`, deliberately separate
+  // from heldFile / heldDropTarget so the existing clear*State() calls
+  // cannot touch it. File contents and tokens are never logged; the
+  // override token never reaches this script (background.js keeps it).
+  // --------------------------------------------------
+
+  async function sha256Hex(file) {
+    if (
+      !file ||
+      typeof file.arrayBuffer !== "function" ||
+      !globalThis.crypto ||
+      !globalThis.crypto.subtle ||
+      typeof globalThis.crypto.subtle.digest !== "function"
+    ) {
+      // Fail closed: without a fingerprint nothing is requested or released.
+      throw new Error("SHA-256 is unavailable.");
+    }
+
+    const digest =
+      await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        await file.arrayBuffer()
+      );
+
+    return Array.from(
+      new Uint8Array(digest),
+      (byte) => byte.toString(16).padStart(2, "0")
+    ).join("");
+  }
+
+  function sendRuntimeMessage(message) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve(null);
+            return;
+          }
+
+          resolve(response === undefined ? null : response);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  function sendOverrideCancel(eventId) {
+    try {
+      chrome.runtime.sendMessage(
+        { type: "OVERRIDE_CANCEL", eventId },
+        () => {
+          void chrome.runtime.lastError;
+        }
+      );
+    } catch (_) {
+      // Best effort: an unreachable background cannot release anything.
+    }
+  }
+
+  function removeOverrideAttribute(ctx) {
+    if (!ctx) return;
+
+    for (const element of [ctx.input, ctx.dropTarget]) {
+      if (
+        element &&
+        element.isConnected &&
+        element.getAttribute(ctx.attr) === ctx.marker
+      ) {
+        element.removeAttribute(ctx.attr);
+      }
+    }
+
+    if (ctx.container && ctx.container.isConnected) {
+      for (const element of ctx.container.querySelectorAll(`[${ctx.attr}]`)) {
+        if (element.getAttribute(ctx.attr) === ctx.marker) {
+          element.removeAttribute(ctx.attr);
+        }
+      }
+    }
+  }
+
+  function cancelOverride(notify = true) {
+    const ctx = heldOverride;
+
+    if (!ctx) return;
+
+    heldOverride = null;
+
+    removeOverrideAttribute(ctx);
+
+    if (notify) {
+      sendOverrideCancel(ctx.eventId);
+    }
+  }
+
+  function captureOverrideContext(kind, response) {
+    if (
+      !response ||
+      !response.override_available ||
+      typeof response.event_id !== "string" ||
+      !response.event_id
+    ) {
+      return;
+    }
+
+    cancelOverride(true);
+
+    if (!heldFile) return;
+
+    const marker =
+      `ai-guardian-override-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    let ctx = null;
+
+    if (kind === "picker") {
+      if (!(heldFileInput instanceof HTMLInputElement)) return;
+
+      ctx = {
+        eventId: response.event_id,
+        file: heldFile,
+        kind: "picker",
+        input: heldFileInput,
+        container: heldFileContainer,
+        accept: heldFileAccept,
+        multiple: heldFileMultiple,
+        dropTarget: null,
+        attr: "data-ai-guardian-override-pending",
+        marker,
+        consuming: false
+      };
+
+      heldFileInput.setAttribute(ctx.attr, marker);
+    } else if (kind === "drop") {
+      if (!(heldDropTarget instanceof Element)) return;
+
+      ctx = {
+        eventId: response.event_id,
+        file: heldFile,
+        kind: "drop",
+        input: null,
+        container: heldDropContainer,
+        accept: null,
+        multiple: false,
+        dropTarget: heldDropTarget,
+        attr: "data-ai-guardian-override-drop",
+        marker,
+        consuming: false
+      };
+
+      heldDropTarget.setAttribute(ctx.attr, marker);
+    } else {
+      return;
+    }
+
+    heldOverride = ctx;
+  }
+
+  // --------------------------------------------------
+  // REDACTION OVERRIDE — banners
+  // --------------------------------------------------
+
+  function showOverrideBanner({
+    heading,
+    lines = [],
+    background = "#374151",
+    buttons = [],
+    autoCloseMs = 0
+  }) {
+    const oldBanner =
+      document.getElementById("ai-guardian-banner");
+
+    if (oldBanner) {
+      oldBanner.remove();
+    }
+
+    const banner = document.createElement("div");
+
+    banner.id = "ai-guardian-banner";
+
+    banner.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 2147483647;
+      width: 390px;
+      padding: 16px;
+      border-radius: 12px;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    `;
+
+    banner.style.background = background;
+
+    const title = document.createElement("strong");
+
+    title.style.fontSize = "16px";
+    title.textContent = String(heading);
+
+    banner.appendChild(title);
+
+    for (const line of lines) {
+      const row = document.createElement("div");
+
+      row.style.marginTop = "8px";
+      row.textContent = String(line);
+
+      banner.appendChild(row);
+    }
+
+    const actions = document.createElement("div");
+
+    actions.style.cssText =
+      "margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;";
+
+    const addButton = (label, onClick) => {
+      const button = document.createElement("button");
+
+      button.type = "button";
+      button.textContent = label;
+      button.style.cssText =
+        "padding:7px 12px;border:0;border-radius:7px;cursor:pointer;font-weight:600;";
+
+      button.addEventListener("click", () => onClick(button));
+
+      actions.appendChild(button);
+    };
+
+    for (const spec of buttons) {
+      addButton(spec.label, spec.onClick);
+    }
+
+    addButton("Close", () => banner.remove());
+
+    banner.appendChild(actions);
+
+    (document.body || document.documentElement).appendChild(banner);
+
+    if (autoCloseMs > 0) {
+      setTimeout(() => {
+        if (banner.isConnected) {
+          banner.remove();
+        }
+      }, autoCloseMs);
+    }
+
+    return banner;
+  }
+
+  function showOverrideInfoBanner(
+    heading,
+    lines,
+    background = "#374151"
+  ) {
+    return showOverrideBanner({
+      heading,
+      lines,
+      background,
+      autoCloseMs: 10000
+    });
+  }
+
+  function showOverrideWaitingBanner() {
+    showOverrideBanner({
+      heading: "Override requested - waiting for reviewer",
+      lines: [
+        "The original file has NOT been released.",
+        "A reviewer must approve this request before anything is released.",
+        "Attaching another file cancels this request."
+      ],
+      background: "#1e3a8a",
+      buttons: [
+        {
+          label: "Cancel request",
+          onClick: () => {
+            cancelOverride(true);
+
+            showOverrideInfoBanner(
+              "Override request cancelled",
+              [
+                "The override request was cancelled. The original file was not released."
+              ]
+            );
+          }
+        }
+      ]
+    });
+  }
+
+  function showOverrideReleasedBanner(reviewedBy) {
+    const reviewer =
+      typeof reviewedBy === "string" && reviewedBy.trim()
+        ? reviewedBy.trim()
+        : "a reviewer";
+
+    showOverrideBanner({
+      heading: "Original released under reviewer override",
+      lines: [
+        "Risk: REVIEWER-OVERRIDE",
+        "Policy decision: REDACT",
+        `Reviewer override approved by ${reviewer}`,
+        "The original file (not the redacted version) was released to the page."
+      ],
+      background: "#4c1d95",
+      autoCloseMs: 15000
+    });
+  }
+
+  function showOverrideFailureBanner() {
+    showOverrideInfoBanner(
+      "Override release failed",
+      [
+        "The original file was not released.",
+        "The reviewer approval can no longer be used. If you still need the original, attach the file again and request a new override."
+      ],
+      "#7f1d1d"
+    );
+  }
+
+  async function submitOverrideRequest(ctx) {
+    let accepted = false;
+
+    try {
+      const sha256 = await sha256Hex(ctx.file);
+
+      if (heldOverride === ctx) {
+        const response = await sendRuntimeMessage({
+          type: "OVERRIDE_REQUEST",
+          eventId: ctx.eventId,
+          sha256
+        });
+
+        accepted = Boolean(response && response.ok === true);
+      }
+    } catch (_) {
+      accepted = false;
+    }
+
+    if (heldOverride !== ctx) {
+      // Superseded while the request was in flight: make sure nothing lingers.
+      if (accepted) {
+        sendOverrideCancel(ctx.eventId);
+      }
+
+      return;
+    }
+
+    if (accepted) {
+      showOverrideWaitingBanner();
+
+      return;
+    }
+
+    cancelOverride(true);
+
+    showOverrideInfoBanner(
+      "Override request failed",
+      [
+        "The override request could not be submitted.",
+        "The original file was not released."
+      ],
+      "#7f1d1d"
+    );
+  }
+
+  function appendOverrideSection(banner) {
+    const ctx = heldOverride;
+
+    if (!ctx) return;
+
+    const section = document.createElement("div");
+
+    section.id = "ai-guardian-override-section";
+    section.style.cssText =
+      "margin-top:16px;padding:12px;border:2px dashed #fecaca;border-radius:10px;background:#450a0a;";
+
+    const makeText = (text, extraStyle = "") => {
+      const element = document.createElement("div");
+
+      element.style.cssText = `margin-top:8px;${extraStyle}`;
+      element.textContent = text;
+
+      return element;
+    };
+
+    const makeButton = (label) => {
+      const button = document.createElement("button");
+
+      button.type = "button";
+      button.textContent = label;
+      button.style.cssText =
+        "padding:7px 12px;border:0;border-radius:7px;cursor:pointer;font-weight:600;";
+
+      return button;
+    };
+
+    const makeTitle = () => {
+      const title = document.createElement("strong");
+
+      title.textContent = "Reviewer override (original file)";
+
+      return title;
+    };
+
+    const renderIntro = () => {
+      section.textContent = "";
+
+      const requestButton = makeButton("Request reviewer override");
+
+      requestButton.style.marginTop = "10px";
+
+      requestButton.addEventListener("click", () => {
+        if (heldOverride !== ctx) {
+          section.remove();
+          return;
+        }
+
+        renderConfirm();
+      });
+
+      section.append(
+        makeTitle(),
+        makeText(
+          "The safe version is the recommended option. If you must use the original file, a reviewer can be asked to approve releasing it."
+        ),
+        requestButton,
+        makeText(
+          "Attaching another file cancels this request",
+          "font-size:12px;opacity:0.9;"
+        )
+      );
+    };
+
+    const renderConfirm = () => {
+      section.textContent = "";
+
+      const label = document.createElement("label");
+
+      label.style.cssText =
+        "display:flex;gap:8px;align-items:center;margin-top:10px;cursor:pointer;";
+
+      const checkbox = document.createElement("input");
+
+      checkbox.type = "checkbox";
+
+      const labelText = document.createElement("span");
+
+      labelText.textContent = "I understand the risk";
+
+      label.append(checkbox, labelText);
+
+      const actions = document.createElement("div");
+
+      actions.style.cssText =
+        "margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;";
+
+      const sendButton = makeButton("Send");
+      const cancelButton = makeButton("Cancel");
+
+      sendButton.disabled = true;
+      sendButton.style.opacity = "0.5";
+
+      checkbox.addEventListener("change", () => {
+        sendButton.disabled = !checkbox.checked;
+        sendButton.style.opacity = checkbox.checked ? "1" : "0.5";
+      });
+
+      cancelButton.addEventListener("click", () => {
+        renderIntro();
+      });
+
+      const status = makeText("", "font-size:12px;");
+
+      sendButton.addEventListener("click", () => {
+        if (!checkbox.checked) return;
+
+        if (heldOverride !== ctx) {
+          section.remove();
+          return;
+        }
+
+        sendButton.disabled = true;
+        cancelButton.disabled = true;
+        checkbox.disabled = true;
+
+        status.textContent = "Sending request...";
+
+        submitOverrideRequest(ctx);
+      });
+
+      actions.append(sendButton, cancelButton);
+
+      section.append(
+        makeTitle(),
+        makeText(
+          "Warning: the original file contains sensitive data. If a reviewer approves, the original file (not the redacted version) will be sent to this AI site."
+        ),
+        label,
+        actions,
+        status
+      );
+    };
+
+    renderIntro();
+
+    banner.appendChild(section);
+  }
+
+  // --------------------------------------------------
+  // REDACTION OVERRIDE — approval, release and terminal states
+  // --------------------------------------------------
+
+  function findOverrideTarget(ctx) {
+    const direct =
+      ctx.kind === "picker"
+        ? ctx.input
+        : ctx.dropTarget;
+
+    if (
+      direct &&
+      direct.isConnected &&
+      direct.getAttribute(ctx.attr) === ctx.marker
+    ) {
+      return direct;
+    }
+
+    if (ctx.container && ctx.container.isConnected) {
+      const selector =
+        ctx.kind === "picker"
+          ? 'input[type="file"]'
+          : `[${ctx.attr}]`;
+
+      for (const candidate of ctx.container.querySelectorAll(selector)) {
+        if (candidate.getAttribute(ctx.attr) === ctx.marker) {
+          return candidate;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function releaseOverrideFile(ctx) {
+    if (!ctx || !ctx.file) return false;
+
+    const target = findOverrideTarget(ctx);
+
+    if (!target) return false;
+
+    if (
+      ctx.kind === "picker" &&
+      (
+        !(target instanceof HTMLInputElement) ||
+        target.type !== "file"
+      )
+    ) {
+      return false;
+    }
+
+    try {
+      const dataTransfer = new DataTransfer();
+
+      dataTransfer.items.add(ctx.file);
+
+      if (ctx.kind === "picker") {
+        target.files = dataTransfer.files;
+
+        allowNextFileChange = true;
+
+        try {
+          target.dispatchEvent(
+            new Event("change", { bubbles: true })
+          );
+        } finally {
+          allowNextFileChange = false;
+        }
+      } else {
+        allowNextDrop = true;
+
+        try {
+          target.dispatchEvent(
+            new DragEvent("drop", {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer
+            })
+          );
+        } finally {
+          allowNextDrop = false;
+        }
+      }
+
+      target.removeAttribute(ctx.attr);
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function handleOverrideApproved(message) {
+    const ctx = heldOverride;
+
+    if (!ctx || message.eventId !== ctx.eventId) return;
+
+    if (ctx.consuming) return;
+
+    ctx.consuming = true;
+
+    let released = false;
+    let superseded = false;
+    let reviewedBy = null;
+
+    try {
+      const sha256 = await sha256Hex(ctx.file);
+
+      const result = await sendRuntimeMessage({
+        type: "OVERRIDE_CONSUME",
+        eventId: ctx.eventId,
+        sha256
+      });
+
+      if (heldOverride !== ctx) {
+        // The request was cancelled/replaced while the consume was in flight.
+        superseded = true;
+      } else if (result && result.ok === true) {
+        reviewedBy =
+          typeof result.reviewedBy === "string"
+            ? result.reviewedBy
+            : message.reviewedBy;
+
+        released = releaseOverrideFile(ctx);
+      }
+    } catch (_) {
+      released = false;
+    } finally {
+      if (heldOverride === ctx) {
+        heldOverride = null;
+      }
+
+      removeOverrideAttribute(ctx);
+    }
+
+    if (superseded) return;
+
+    if (released) {
+      showOverrideReleasedBanner(reviewedBy);
+    } else {
+      showOverrideFailureBanner();
+    }
+  }
+
+  function handleOverrideTerminal(message) {
+    const ctx = heldOverride;
+
+    if (!ctx || message.eventId !== ctx.eventId) return;
+
+    heldOverride = null;
+
+    removeOverrideAttribute(ctx);
+
+    if (message.state === "REJECTED") {
+      showOverrideInfoBanner(
+        "Override rejected",
+        [
+          "Reviewer rejected the override request. The original file was not released."
+        ]
+      );
+    } else if (message.state === "EXPIRED") {
+      showOverrideInfoBanner(
+        "Override expired",
+        [
+          "The override request expired. The original file was not released."
+        ]
+      );
+    } else if (message.state === "CANCELLED") {
+      showOverrideInfoBanner(
+        "Override cancelled",
+        [
+          "The override request was cancelled. The original file was not released."
+        ]
+      );
+    } else {
+      showOverrideInfoBanner(
+        "Override ended",
+        [
+          "The override request is no longer active. The original file was not released."
+        ]
+      );
+    }
   }
 
 
@@ -2292,6 +3014,9 @@
       return;
     }
 
+    // A new real file selection cancels any pending override request.
+    cancelOverride(true);
+
     const file =
       target.files[0];
 
@@ -2440,6 +3165,8 @@
           console.log(
             "[AI Guardian] STEP 5H: Decision = REDACT. Original file will not be released."
           );
+
+          captureOverrideContext("picker", response);
 
           showFileRedactedBanner({
             ...response,
@@ -2596,6 +3323,9 @@
         return;
       }
 
+      // A new real file drop cancels any pending override request.
+      cancelOverride(true);
+
       heldFile =
         file;
 
@@ -2708,6 +3438,8 @@
             console.log(
               "[AI Guardian] STEP 5H: Decision = REDACT. Original dropped file will not be released."
             );
+
+            captureOverrideContext("drop", response);
 
             showFileRedactedBanner({
               ...response,

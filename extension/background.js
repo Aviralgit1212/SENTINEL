@@ -19,6 +19,9 @@ fetch("http://127.0.0.1:8000/ping", {
 
 const BACKEND = "http://127.0.0.1:8000";
 const RELEASE_ALARM = "ai-guardian-release-poll";
+const OVERRIDE_OFFERS_KEY = "overrideOffers";
+const OVERRIDE_OFFER_MAX_AGE_MS = 30 * 60 * 1000;
+const OVERRIDE_OFFER_MAX_ENTRIES = 20;
 
 function safeSiteHost(value) {
   try {
@@ -78,6 +81,208 @@ async function removePendingRelease(eventId) {
   }
 }
 
+// --------------------------------------------------
+// REDACTION OVERRIDE — offer storage and pending entries
+// --------------------------------------------------
+// Override tokens live only in chrome.storage.session. They are never
+// forwarded to content.js and never logged.
+
+async function getOverrideOffers() {
+  const data = await chrome.storage.session.get(OVERRIDE_OFFERS_KEY);
+  return data[OVERRIDE_OFFERS_KEY] || {};
+}
+
+async function saveOverrideOffers(offers) {
+  await chrome.storage.session.set({ [OVERRIDE_OFFERS_KEY]: offers });
+}
+
+function pruneOverrideOffers(offers) {
+  const now = Date.now();
+
+  for (const [eventId, offer] of Object.entries(offers)) {
+    if (
+      !offer ||
+      typeof offer.token !== "string" ||
+      typeof offer.createdAt !== "number" ||
+      now - offer.createdAt >= OVERRIDE_OFFER_MAX_AGE_MS
+    ) {
+      delete offers[eventId];
+    }
+  }
+
+  const entries = Object.entries(offers);
+
+  if (entries.length > OVERRIDE_OFFER_MAX_ENTRIES) {
+    entries.sort((a, b) => a[1].createdAt - b[1].createdAt);
+
+    for (const [eventId] of entries.slice(0, entries.length - OVERRIDE_OFFER_MAX_ENTRIES)) {
+      delete offers[eventId];
+    }
+  }
+
+  return offers;
+}
+
+async function saveOverrideOffer(eventId, token) {
+  if (typeof eventId !== "string" || !eventId || typeof token !== "string" || !token) {
+    throw new Error("Invalid override offer.");
+  }
+
+  const offers = pruneOverrideOffers(await getOverrideOffers());
+
+  offers[eventId] = {
+    token,
+    createdAt: Date.now()
+  };
+
+  await saveOverrideOffers(pruneOverrideOffers(offers));
+}
+
+async function getOverrideToken(eventId) {
+  const offers = await getOverrideOffers();
+  const offer = offers[eventId];
+
+  if (
+    !offer ||
+    typeof offer.token !== "string" ||
+    typeof offer.createdAt !== "number" ||
+    Date.now() - offer.createdAt >= OVERRIDE_OFFER_MAX_AGE_MS
+  ) {
+    return null;
+  }
+
+  return offer.token;
+}
+
+async function removeOverrideOffer(eventId) {
+  const offers = await getOverrideOffers();
+
+  if (eventId in offers) {
+    delete offers[eventId];
+    await saveOverrideOffers(offers);
+  }
+}
+
+function overrideUrl(eventId, action) {
+  return `${BACKEND}/release/override/${encodeURIComponent(eventId)}/${action}`;
+}
+
+async function registerPendingOverride(eventId, overrideToken, tabId) {
+  if (!eventId || !overrideToken || typeof tabId !== "number") {
+    throw new Error("Cannot register override.");
+  }
+
+  const pending = await getPendingEvents();
+
+  pending[eventId] = {
+    kind: "override",
+    eventId,
+    overrideToken,
+    tabId,
+    payloadType: "file",
+    createdAt: Date.now(),
+    notified: false
+  };
+
+  await savePendingEvents(pending);
+
+  await chrome.alarms.create(RELEASE_ALARM, {
+    periodInMinutes: 0.5
+  });
+}
+
+async function pollOverride(item, pending) {
+  // `pending` is the snapshot taken by pollPendingReleases. Writes below
+  // re-read the store so a concurrent register/remove is never overwritten.
+  const response = await fetch(
+    overrideUrl(item.eventId, "status"),
+    {
+      method: "GET",
+      headers: {
+        "X-Sentinel-Override-Token": item.overrideToken
+      }
+    }
+  );
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 404 || response.status === 410) {
+      await chrome.tabs.sendMessage(item.tabId, {
+        type: "OVERRIDE_TERMINAL",
+        eventId: item.eventId,
+        state: "EXPIRED"
+      }).catch(() => {});
+      await removePendingRelease(item.eventId);
+      return;
+    }
+
+    console.warn(
+      "[AI Guardian Background] Override status check failed:",
+      item.eventId,
+      response.status
+    );
+    return;
+  }
+
+  const data = await response.json();
+  const state = data.state;
+
+  if (state === "PENDING" || state === "AVAILABLE") {
+    return;
+  }
+
+  if (state === "APPROVED") {
+    if (item.notified) {
+      return;
+    }
+
+    // The entry may have been consumed/cancelled while this poll was in flight.
+    const current = await getPendingEvents();
+
+    if (!current[item.eventId]) {
+      return;
+    }
+
+    try {
+      await chrome.tabs.sendMessage(item.tabId, {
+        type: "OVERRIDE_APPROVED",
+        eventId: item.eventId,
+        reviewedBy: data.reviewed_by
+      });
+    } catch (error) {
+      console.warn(
+        "[AI Guardian Background] Could not deliver override approval to tab; will retry.",
+        item.eventId
+      );
+      return;
+    }
+
+    item.notified = true;
+
+    const latest = await getPendingEvents();
+
+    if (latest[item.eventId]) {
+      latest[item.eventId].notified = true;
+      await savePendingEvents(latest);
+    }
+
+    return;
+  }
+
+  if (state === "REJECTED" || state === "EXPIRED" || state === "CANCELLED") {
+    await chrome.tabs.sendMessage(item.tabId, {
+      type: "OVERRIDE_TERMINAL",
+      eventId: item.eventId,
+      state
+    }).catch(() => {});
+    await removePendingRelease(item.eventId);
+    return;
+  }
+
+  if (state === "RELEASED") {
+    await removePendingRelease(item.eventId);
+  }
+}
+
 async function pollPendingReleases() {
   const pending = await getPendingEvents();
   const entries = Object.values(pending);
@@ -89,6 +294,11 @@ async function pollPendingReleases() {
 
   for (const item of entries) {
     try {
+      if (item.kind === "override") {
+        await pollOverride(item, pending);
+        continue;
+      }
+
       if (Date.now() - item.createdAt >= 20 * 60 * 1000) {
         await chrome.tabs.sendMessage(item.tabId, {
           type: "RELEASE_TERMINAL",
@@ -260,6 +470,194 @@ chrome.runtime.onMessage.addListener(
 
 
     /*
+     * REDACTION OVERRIDE — request a reviewer's approval to release
+     * the ORIGINAL of a REDACTED file. The override token never leaves
+     * the extension background.
+     */
+    if (message.type === "OVERRIDE_REQUEST") {
+      (async () => {
+        let overrideToken = null;
+        let requested = false;
+
+        try {
+          if (
+            typeof message.eventId !== "string" || !message.eventId ||
+            typeof message.sha256 !== "string" || !message.sha256 ||
+            typeof sender.tab?.id !== "number"
+          ) {
+            sendResponse({ ok: false, error: "Invalid override request." });
+            return;
+          }
+
+          overrideToken = await getOverrideToken(message.eventId);
+
+          if (!overrideToken) {
+            sendResponse({ ok: false, error: "Override offer is no longer available." });
+            return;
+          }
+
+          const response = await fetch(
+            overrideUrl(message.eventId, "request"),
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Sentinel-Override-Token": overrideToken
+              },
+              body: JSON.stringify({
+                sha256: message.sha256,
+                risk_acknowledged: true
+              })
+            }
+          );
+
+          if (!response.ok) {
+            sendResponse({
+              ok: false,
+              error: `Override request failed (HTTP ${response.status}).`
+            });
+            return;
+          }
+
+          requested = true;
+
+          const data = await response.json();
+
+          await registerPendingOverride(
+            message.eventId,
+            overrideToken,
+            sender.tab.id
+          );
+          await removeOverrideOffer(message.eventId);
+
+          sendResponse({ ok: true, expiresAt: data.expires_at });
+        } catch (error) {
+          console.error("[AI Guardian Background] Override request failed.");
+
+          if (requested && overrideToken) {
+            // Request reached the backend but could not be tracked locally:
+            // best-effort cancel so no unwatched approval can linger.
+            fetch(overrideUrl(message.eventId, "cancel"), {
+              method: "POST",
+              headers: { "X-Sentinel-Override-Token": overrideToken }
+            }).catch(() => {});
+          }
+
+          sendResponse({ ok: false, error: "Override request failed." });
+        }
+      })();
+
+      return true;
+    }
+
+
+    if (message.type === "OVERRIDE_CONSUME") {
+      (async () => {
+        let entry = null;
+
+        try {
+          if (typeof message.eventId !== "string" || typeof message.sha256 !== "string" || !message.sha256) {
+            sendResponse({ ok: false, error: "Invalid override release request." });
+            return;
+          }
+
+          const pending = await getPendingEvents();
+          entry = pending[message.eventId];
+
+          if (!entry || entry.kind !== "override" || !entry.overrideToken) {
+            entry = null;
+            sendResponse({ ok: false, error: "No approved override is available." });
+            return;
+          }
+
+          const response = await fetch(
+            overrideUrl(message.eventId, "consume"),
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Sentinel-Override-Token": entry.overrideToken
+              },
+              body: JSON.stringify({ sha256: message.sha256 })
+            }
+          );
+
+          if (!response.ok) {
+            sendResponse({
+              ok: false,
+              error: `Override release failed (HTTP ${response.status}).`
+            });
+            return;
+          }
+
+          const data = await response.json();
+
+          sendResponse({ ok: true, reviewedBy: data.reviewed_by });
+        } catch (error) {
+          console.error("[AI Guardian Background] Override release failed.");
+
+          // Fail closed: the original is never released on error.
+          sendResponse({ ok: false, error: "Override release failed." });
+        } finally {
+          // Single use: the pending entry is always removed afterwards.
+          if (entry && entry.kind === "override") {
+            await removePendingRelease(message.eventId).catch(() => {});
+          }
+        }
+      })();
+
+      return true;
+    }
+
+
+    if (message.type === "OVERRIDE_CANCEL") {
+      (async () => {
+        let entry = null;
+
+        try {
+          if (typeof message.eventId === "string" && message.eventId) {
+            const pending = await getPendingEvents();
+            entry = pending[message.eventId];
+
+            const overrideToken =
+              (entry && entry.kind === "override" && entry.overrideToken) ||
+              (await getOverrideToken(message.eventId));
+
+            if (overrideToken) {
+              await fetch(
+                overrideUrl(message.eventId, "cancel"),
+                {
+                  method: "POST",
+                  headers: {
+                    "X-Sentinel-Override-Token": overrideToken
+                  }
+                }
+              ).catch(() => {});
+            }
+          }
+        } catch (_) {
+          // Cancel is best-effort; errors are ignored.
+        }
+
+        try {
+          if (typeof message.eventId === "string" && message.eventId) {
+            if (entry && entry.kind === "override") {
+              await removePendingRelease(message.eventId);
+            }
+            await removeOverrideOffer(message.eventId);
+          }
+        } catch (_) {
+          // Ignore local cleanup errors.
+        }
+
+        sendResponse({ ok: true });
+      })();
+
+      return true;
+    }
+
+
+    /*
      * STEP 5B:
      * Receive file metadata only.
     */
@@ -354,6 +752,33 @@ chrome.runtime.onMessage.addListener(
                 sender.tab?.id,
                 "file"
               );
+            }
+
+            // Redaction override: keep the token inside the extension and
+            // expose only override_available to content.js.
+            let overrideStored = false;
+
+            if (
+              data.decision === "REDACT" &&
+              data.event_id &&
+              data.override_token
+            ) {
+              try {
+                await saveOverrideOffer(data.event_id, data.override_token);
+                overrideStored = true;
+              } catch (_) {
+                console.warn(
+                  "[AI Guardian Background] Could not store override offer."
+                );
+              }
+            }
+
+            delete data.override_token;
+
+            if (overrideStored) {
+              data.override_available = true;
+            } else if ("override_available" in data) {
+              data.override_available = false;
             }
 
             sendResponse(data);

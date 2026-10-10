@@ -4,6 +4,7 @@ from dashboard_api import router as dashboard_router
 from release_api import router as release_router
 import asyncio
 import base64
+import hashlib
 import json
 import mimetypes
 import re
@@ -28,6 +29,7 @@ from dashboard_store import (
     add_audit_event,
     create_security_event,
 )
+from override_store import offer_override
 from release_store import (
     PayloadCapacityError,
     create_held_payload,
@@ -146,7 +148,7 @@ app.add_middleware(
         "DELETE",
         "OPTIONS",
     ],
-    allow_headers=["Content-Type", "Authorization", "X-Guardian-Release-Token", "X-Sentinel-Site", "X-Sentinel-Mode", "X-Sentinel-Cache-Choice"],
+    allow_headers=["Content-Type", "Authorization", "X-Guardian-Release-Token", "X-Sentinel-Site", "X-Sentinel-Mode", "X-Sentinel-Cache-Choice", "X-Sentinel-Override-Token"],
 )
 
 
@@ -1265,5 +1267,27 @@ async def scan_file(
 
     if release_token is not None:
         response["release_token"] = release_token
+
+    # --------------------------------------------------
+    # REDACT OVERRIDE OFFER
+    # --------------------------------------------------
+    # Only for a COMPLETE REDACT that produced a redacted file.
+    # The token is returned once; only its SHA-256 hash is stored.
+    # Any failure fails closed: no token, override_available False.
+    if (
+        response["decision"] == "REDACT"
+        and response.get("scan_status") == "COMPLETE"
+        and not response.get("error")
+        and response.get("redacted_file_base64")
+    ):
+        try:
+            override_fingerprint = hashlib.sha256(file_bytes).hexdigest()
+            override_token = secrets.token_urlsafe(32)
+            offer_override(event_id, override_token, override_fingerprint)
+            response["override_token"] = override_token
+            response["override_available"] = True
+        except Exception:
+            response.pop("override_token", None)
+            response["override_available"] = False
 
     return response

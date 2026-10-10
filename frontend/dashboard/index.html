@@ -772,6 +772,60 @@
       line-height: 1.4;
     }
 
+    .override-actions {
+      margin-top: 20px;
+
+      padding: 14px;
+
+      border: 1px solid #fed7aa;
+      border-radius: 12px;
+
+      background: var(--amber-soft);
+    }
+
+    .override-warning {
+      margin: 5px 0 10px;
+
+      color: #9a3412;
+
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+
+    .override-reason-label {
+      display: block;
+
+      margin-bottom: 5px;
+
+      color: var(--text);
+
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .override-reason {
+      display: block;
+      box-sizing: border-box;
+
+      width: 100%;
+      min-height: 64px;
+      margin-bottom: 10px;
+      padding: 8px 9px;
+
+      border: 1px solid var(--border);
+      border-radius: 8px;
+
+      background: #ffffff;
+
+      color: var(--text);
+
+      font-family: inherit;
+      font-size: 12px;
+
+      resize: vertical;
+    }
+
     .empty-detail {
       padding: 28px 18px;
 
@@ -1613,8 +1667,12 @@
 
 
           const statusClass =
-            event.state ===
-            "PENDING_APPROVAL"
+            (
+              event.state ===
+              "PENDING_APPROVAL" ||
+              event.state ===
+              "OVERRIDE_PENDING"
+            )
               ? "badge-pending"
               : decisionClass(
                   event.decision
@@ -1768,6 +1826,56 @@
           `
         )
         .join("");
+    }
+
+
+    function renderOverrideInfo(override) {
+
+      const text = (value) =>
+        value
+          ? escapeHtml(value)
+          : "—";
+
+      const time = (value) =>
+        value
+          ? formatTime(value)
+          : "—";
+
+      const rows = [
+        ["Status", text(override.status)],
+        ["Requested at", time(override.requested_at)],
+        ["Expires at", time(override.expires_at)],
+        ["Approval expires at", time(override.approval_expires_at)],
+        ["Reviewed by", text(override.reviewed_by)],
+        ["Review reason", text(override.review_reason)],
+        ["Reviewed at", time(override.reviewed_at)],
+        ["Consumed at", time(override.consumed_at)],
+        ["Fingerprint prefix", text(override.fingerprint_prefix)]
+      ];
+
+      return `
+          <div class="section">
+
+            <h3 class="section-title">
+              Override
+            </h3>
+
+            ${rows.map(([label, value]) => `
+              <div class="detail-row">
+
+                <span class="detail-key">
+                  ${escapeHtml(label)}
+                </span>
+
+                <span class="detail-value">
+                  ${value}
+                </span>
+
+              </div>
+            `).join("")}
+
+          </div>
+      `;
     }
 
 
@@ -2025,6 +2133,74 @@
           </div>
 
 
+          ${
+            event.state === "OVERRIDE_PENDING"
+              ? `
+          <div
+            id="override-actions"
+            class="override-actions"
+          >
+
+            <div class="review-actions-title">
+              Override Request (REDACT policy)
+            </div>
+
+            <p class="override-warning">
+              Approving releases the ORIGINAL file containing the detected
+              sensitive data. The safe version already exists.
+            </p>
+
+            <label
+              class="override-reason-label"
+              for="override-reason"
+            >
+              Reason (required)
+            </label>
+
+            <textarea
+              id="override-reason"
+              class="override-reason"
+              maxlength="300"
+              placeholder="Explain your decision. Do not type any sensitive values (IDs, card numbers, keys)."
+            ></textarea>
+
+            <div class="review-buttons">
+
+              <button
+                id="approve-override-button"
+                class="review-button approve-button"
+                type="button"
+              >
+                Approve override
+              </button>
+
+              <button
+                id="reject-override-button"
+                class="review-button reject-button"
+                type="button"
+              >
+                Reject
+              </button>
+
+            </div>
+
+            <div
+              id="override-action-message"
+              class="review-action-message hidden"
+            ></div>
+
+          </div>
+              `
+              : ""
+          }
+
+          ${
+            event.override
+              ? renderOverrideInfo(event.override)
+              : ""
+          }
+
+
           <div class="section">
 
             <h3 class="section-title">
@@ -2159,8 +2335,191 @@
 
         }
       }
+
+
+      const overrideApproveButton =
+        $("approve-override-button");
+
+      const overrideRejectButton =
+        $("reject-override-button");
+
+      if (
+        overrideApproveButton &&
+        overrideRejectButton
+      ) {
+
+        overrideApproveButton.onclick =
+          () => reviewOverride(
+            event.id,
+            "approve"
+          );
+
+        overrideRejectButton.onclick =
+          () => reviewOverride(
+            event.id,
+            "reject"
+          );
+
+      }
     }
 
+
+    async function reviewOverride(
+      eventId,
+      action
+    ) {
+
+      const approveButton =
+        $("approve-override-button");
+
+      const rejectButton =
+        $("reject-override-button");
+
+      const reasonInput =
+        $("override-reason");
+
+      const message =
+        $("override-action-message");
+
+
+      if (
+        !approveButton ||
+        !rejectButton ||
+        !reasonInput ||
+        !message
+      ) {
+        return;
+      }
+
+
+      const reason =
+        reasonInput.value.trim();
+
+
+      if (!reason) {
+
+        message.textContent =
+          "A reason is required before approving or rejecting an override.";
+
+        message.classList.remove(
+          "hidden"
+        );
+
+        reasonInput.focus();
+
+        return;
+      }
+
+
+      approveButton.disabled = true;
+
+      rejectButton.disabled = true;
+
+      message.classList.add(
+        "hidden"
+      );
+
+
+      try {
+
+        const response =
+          await apiFetch(
+            `${API_BASE}/events/${encodeURIComponent(
+              eventId
+            )}/override/${action}`,
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body: JSON.stringify({
+                reason
+              })
+            }
+          );
+
+
+        const body =
+          await response.json();
+
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+            (
+              typeof body.detail === "string"
+                ? body.detail
+                : null
+            ) ||
+            `Could not ${action} override.`
+          );
+
+        }
+
+
+        renderDetail(
+          body
+        );
+
+
+        const updatedMessage =
+          $("override-action-message");
+
+        if (updatedMessage) {
+
+          updatedMessage.textContent =
+            action === "approve"
+              ? "Override approved."
+              : "Override rejected.";
+
+          updatedMessage.classList.remove(
+            "hidden"
+          );
+        }
+
+
+        await Promise.all([
+          loadSummary(),
+          loadEvents()
+        ]);
+
+      } catch (error) {
+
+        if (
+          error.message ===
+          "SESSION_EXPIRED"
+        ) {
+          return;
+        }
+
+
+        console.error(
+          error
+        );
+
+
+        message.textContent =
+          error.message ||
+          "Override action failed.";
+
+
+        message.classList.remove(
+          "hidden"
+        );
+
+      } finally {
+
+        approveButton.disabled = false;
+
+        rejectButton.disabled = false;
+
+      }
+    }
 
 
     async function reviewEvent(
