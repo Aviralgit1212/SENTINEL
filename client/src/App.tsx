@@ -1,4 +1,11 @@
-import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
 
 import AppHeader from './components/layout/AppHeader'
@@ -17,7 +24,13 @@ function AppLayout() {
   if (!isLoaded) return <LoadingScreen />
 
   if (!isSignedIn) {
-    return <Navigate to="/sign-in" replace state={{ from: location.pathname }} />
+    return (
+      <Navigate
+        to="/sign-in"
+        replace
+        state={{ from: location.pathname }}
+      />
+    )
   }
 
   return (
@@ -40,7 +53,9 @@ function LandingRoute() {
     <LandingPage
       isSignedIn={signedIn}
       onSignIn={() => navigate('/sign-in')}
-      onStart={() => navigate(signedIn ? '/dashboard' : '/sign-in')}
+      onStart={() =>
+        navigate(signedIn ? '/dashboard' : '/sign-in')
+      }
     />
   )
 }
@@ -49,12 +64,24 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingRoute />} />
-      <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
-      <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
+      <Route
+        path="/sign-in/*"
+        element={<AuthPage mode="sign-in" />}
+      />
+      <Route
+        path="/sign-up/*"
+        element={<AuthPage mode="sign-up" />}
+      />
 
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+
+        {/* Scan a new file */}
         <Route path="/scan" element={<ScanPage />} />
+
+        {/* Open a previously saved scan result */}
+        <Route path="/scan/:scanId" element={<ScanPage />} />
+
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
 

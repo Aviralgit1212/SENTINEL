@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
+import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 
 import type {
@@ -37,9 +38,11 @@ function mapScanToRecord(
 function ScanTable({
   records,
   dateFormat,
+  onOpenScan,
 }: {
   records: ScanRecord[]
   dateFormat: DateFormat
+  onOpenScan: (scanId: string) => void
 }) {
   return (
     <div className="table-scroll">
@@ -54,22 +57,31 @@ function ScanTable({
 
         <tbody>
           {records.map((record) => (
-            <tr key={record.id}>
-              <td className="file">
-                {record.name}
+            <tr
+              key={record.id}
+              className="history-clickable-row"
+              onClick={() => onOpenScan(record.id)}
+              tabIndex={0}
+              role="link"
+              aria-label={`Open report for ${record.name}`}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' ||
+                  event.key === ' '
+                ) {
+                  event.preventDefault()
+                  onOpenScan(record.id)
+                }
+              }}
+            >
+              <td className="file">{record.name}</td>
+
+              <td>
+                {formatDate(record.scannedAt, dateFormat)}
               </td>
 
               <td>
-                {formatDate(
-                  record.scannedAt,
-                  dateFormat,
-                )}
-              </td>
-
-              <td>
-                <RiskBadge
-                  risk={record.risk}
-                />
+                <RiskBadge risk={record.risk} />
               </td>
             </tr>
           ))}
@@ -78,40 +90,29 @@ function ScanTable({
     </div>
   )
 }
-
 export default function RecentScans({
   onOpenHistory,
   historyOpen,
   onCloseHistory,
 }: Props) {
-  const dialogRef =
-    useRef<HTMLDialogElement>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
 
   const { getToken } = useAuth()
+  const navigate = useNavigate()
 
   const [dateFormat] = useState(
     () => readPreferences().dateFormat,
   )
 
-  const [search, setSearch] =
-    useState('')
-
+  const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] =
     useState<RiskFilter>('all')
 
-  const [scans, setScans] =
-    useState<ScanRecord[]>([])
+  const [scans, setScans] = useState<ScanRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const [loading, setLoading] =
-    useState(true)
-
-  const [error, setError] =
-    useState<string | null>(null)
-
-  // --------------------------------
-  // Load real scan history
-  // --------------------------------
-
+  // Load real scan history.
   useEffect(() => {
     let cancelled = false
 
@@ -120,7 +121,6 @@ export default function RecentScans({
       setError(null)
 
       try {
-        // Get the current Clerk session token.
         const token = await getToken()
 
         if (!token) {
@@ -133,7 +133,6 @@ export default function RecentScans({
           `${API_BASE_URL}/api/scans`,
           {
             method: 'GET',
-
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -160,9 +159,7 @@ export default function RecentScans({
         }
 
         if (!cancelled) {
-          setScans(
-            data.map(mapScanToRecord),
-          )
+          setScans(data.map(mapScanToRecord))
         }
       } catch (historyError) {
         if (!cancelled) {
@@ -186,57 +183,37 @@ export default function RecentScans({
     }
   }, [getToken])
 
-  // --------------------------------
-  // Dialog
-  // --------------------------------
-
+  // Keep the history dialog synchronized with its parent.
   useEffect(() => {
     const dialog = dialogRef.current
 
     if (!dialog) return
 
-    if (
-      historyOpen &&
-      !dialog.open
-    ) {
+    if (historyOpen && !dialog.open) {
       dialog.showModal()
     }
 
-    if (
-      !historyOpen &&
-      dialog.open
-    ) {
+    if (!historyOpen && dialog.open) {
       dialog.close()
     }
   }, [historyOpen])
 
-  // --------------------------------
-  // Filtering
-  // --------------------------------
-
+  // Filter by filename and risk level.
   const filtered = useMemo(() => {
-    const query = search
-      .trim()
-      .toLowerCase()
+    const query = search.trim().toLowerCase()
 
     return scans.filter(
       (scan) =>
         (
           query === '' ||
-          scan.name
-            .toLowerCase()
-            .includes(query)
+          scan.name.toLowerCase().includes(query)
         ) &&
         (
           riskFilter === 'all' ||
           scan.risk === riskFilter
         ),
     )
-  }, [
-    scans,
-    search,
-    riskFilter,
-  ])
+  }, [scans, search, riskFilter])
 
   function clearFilters() {
     setSearch('')
@@ -248,6 +225,12 @@ export default function RecentScans({
     onCloseHistory()
   }
 
+  // Open the saved scan result, not a new scan.
+  function openScan(scanId: string) {
+    onCloseHistory()
+    navigate(`/scan/${encodeURIComponent(scanId)}`)
+  }
+
   return (
     <>
       <section
@@ -256,14 +239,8 @@ export default function RecentScans({
       >
         <div className="panel-head">
           <div>
-            <h2 id="recent-title">
-              Recent scans
-            </h2>
-
-            <p>
-              Your latest file analysis
-              results.
-            </p>
+            <h2 id="recent-title">Recent scans</h2>
+            <p>Your latest file analysis results.</p>
           </div>
 
           <button
@@ -278,9 +255,7 @@ export default function RecentScans({
 
         {loading ? (
           <div className="history-empty">
-            <p>
-              Loading scan history...
-            </p>
+            <p>Loading scan history...</p>
           </div>
         ) : error ? (
           <div className="history-empty">
@@ -289,14 +264,15 @@ export default function RecentScans({
         ) : scans.length === 0 ? (
           <div className="history-empty">
             <p>
-              No scans yet. Upload a file
-              to start your first analysis.
+              No scans yet. Upload a file to start your first
+              analysis.
             </p>
           </div>
         ) : (
           <ScanTable
             records={scans.slice(0, 5)}
             dateFormat={dateFormat}
+            onOpenScan={openScan}
           />
         )}
       </section>
@@ -307,19 +283,14 @@ export default function RecentScans({
         aria-labelledby="history-title"
         onClose={handleClose}
         onClick={(event) => {
-          if (
-            event.target ===
-            event.currentTarget
-          ) {
+          if (event.target === event.currentTarget) {
             onCloseHistory()
           }
         }}
       >
         <div className="history-inner">
           <header className="history-head">
-            <h2 id="history-title">
-              Scan history
-            </h2>
+            <h2 id="history-title">Scan history</h2>
 
             <button
               type="button"
@@ -340,9 +311,7 @@ export default function RecentScans({
                 placeholder="Search by file name"
                 value={search}
                 onChange={(event) =>
-                  setSearch(
-                    event.target.value,
-                  )
+                  setSearch(event.target.value)
                 }
                 aria-label="Search scan history by file name"
               />
@@ -352,39 +321,22 @@ export default function RecentScans({
               value={riskFilter}
               onChange={(event) =>
                 setRiskFilter(
-                  event.target
-                    .value as RiskFilter,
+                  event.target.value as RiskFilter,
                 )
               }
               aria-label="Filter by risk"
             >
-              <option value="all">
-                All risks
-              </option>
-
-              <option value="low">
-                Low
-              </option>
-
-              <option value="medium">
-                Medium
-              </option>
-
-              <option value="high">
-                High
-              </option>
-
-              <option value="critical">
-                Critical
-              </option>
+              <option value="all">All risks</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
             </select>
           </div>
 
           {loading ? (
             <div className="history-empty">
-              <p>
-                Loading scan history...
-              </p>
+              <p>Loading scan history...</p>
             </div>
           ) : error ? (
             <div className="history-empty">
@@ -394,6 +346,7 @@ export default function RecentScans({
             <ScanTable
               records={filtered}
               dateFormat={dateFormat}
+              onOpenScan={openScan}
             />
           ) : (
             <div className="history-empty">
@@ -407,9 +360,7 @@ export default function RecentScans({
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={
-                    clearFilters
-                  }
+                  onClick={clearFilters}
                 >
                   Clear filters
                 </button>
@@ -418,8 +369,7 @@ export default function RecentScans({
           )}
 
           <p className="history-foot">
-            {filtered.length} of{' '}
-            {scans.length} records.
+            {filtered.length} of {scans.length} records.
           </p>
         </div>
       </dialog>
