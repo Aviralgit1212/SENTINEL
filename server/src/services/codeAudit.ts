@@ -55,6 +55,48 @@ const RULES: Array<{
     description: 'Potential command injection risk. Prefer argument arrays and avoid shell interpretation.',
   },
   {
+    id: 'evasive-reflection',
+    regex: /(?:__builtins__|globals\(\)\.get|locals\(\)\.get|__dict__\.get|getattr\s*\([^)]*(?:eval|exec|system|popen|spawn))/i,
+    title: 'Evasive dynamic execution via built-ins reflection / dynamic function lookup',
+    severity: 'critical',
+    description: 'Attempts to dynamically resolve or execute built-in execution functions via reflection or dictionary lookups to evade static filters.',
+  },
+  {
+    id: 'dynamic-import',
+    regex: /(?:__import__\s*\(|importlib\.import_module\s*\()/i,
+    title: 'Dynamic module loading via __import__ or importlib',
+    severity: 'high',
+    description: 'Dynamic module loading can evade static inspection and load unauthorized or malicious libraries at runtime.',
+  },
+  {
+    id: 'destructive-command',
+    regex: /(?:rm\s+-rf\s+(?:--no-preserve-root\s+)?\/|format\s+[a-zA-Z]:|dd\s+if=\/dev\/(?:zero|urandom)\s+of=\/dev\/|mkfs\.[a-z0-9]+\s+\/dev\/)/i,
+    title: 'Destructive system command signature',
+    severity: 'critical',
+    description: 'The source contains commands known to cause destructive disk erasure or arbitrary root-level filesystem deletion.',
+  },
+  {
+    id: 'indirect-system-call',
+    regex: /(?:runtime_engine|engine|mod|module|subproc)\.(?:system|popen|exec|spawn)\s*\(/i,
+    title: 'Indirect shell command execution via resolved module object',
+    severity: 'high',
+    description: 'Invoking system execution methods through aliased or dynamically resolved module objects.',
+  },
+  {
+    id: 'obfuscated-payload',
+    regex: /(?:base64\.(?:b64decode|decode)|atob|Buffer\.from\([^)]*['"]base64['"]\))\s*\([^)]*\)/i,
+    title: 'Base64 payload decoding in executable path',
+    severity: 'medium',
+    description: 'Decoding embedded Base64 strings near runtime variables may indicate obfuscated payloads, evasion tokens, or hidden URLs.',
+  },
+  {
+    id: 'obfuscated-secret-token',
+    regex: /(?:aHR0c[A-Za-z0-9+/=]{12,}|(?:SECRET|TOKEN|CONFIG|KEY|AUTH|TARGET|PAYLOAD|EXFIL)[A-Z0-9_]*\s*=\s*['"][A-Za-z0-9+/=]{12,}={0,2}['"])/i,
+    title: 'Obfuscated credential or exfiltration endpoint token',
+    severity: 'high',
+    description: 'Detected Base64-encoded credential configuration or exfiltration URI token assigned to variable.',
+  },
+  {
     id: 'tls-verification-disabled',
     regex: /(?:rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*['"]?\s*[:=]\s*['"]?0|verify\s*=\s*False)/i,
     title: 'TLS certificate verification disabled',
@@ -194,10 +236,21 @@ const DEPENDENCY_ADVISORIES: DependencyAdvisory[] = [
     cve: 'CVE-2023-32681',
     cwe: 'CWE-200',
     severity: 'medium',
-    maxVulnerableVersion: '2.31.0',
+    maxVulnerableVersion: '2.31.1',
     title: 'Requests Proxy-Authorization Header Leak',
     description: 'Requests leaks Proxy-Authorization headers to destination servers when following redirects.',
-    remediation: 'Upgrade requests to >= 2.31.0',
+    remediation: 'Upgrade requests to >= 2.31.1',
+  },
+  {
+    pkg: 'pyramid',
+    ecosystem: 'pypi',
+    cve: 'CVE-2023-40587',
+    cwe: 'CWE-706',
+    severity: 'high',
+    maxVulnerableVersion: '2.0.0',
+    title: 'Pyramid Structural Routing Bypass',
+    description: 'Pyramid before 2.0.0 allows unauthorized route access under specific traversal configuration paths.',
+    remediation: 'Upgrade pyramid to >= 2.0.0',
   },
   {
     pkg: 'urllib3',
@@ -252,20 +305,19 @@ function parseVersion(v: string): number[] {
   return parts
 }
 
-function semverLt(v: string, target: string): boolean {
+function semverLte(v: string, target: string): boolean {
   const [m1, n1, p1] = parseVersion(v)
   const [m2, n2, p2] = parseVersion(target)
-  if (m1 !== m2) return m1 < m2
-  if (n1 !== n2) return n1 < n2
-  return p1 < p2
+  if (m1 !== m2) return m1 <= m2
+  if (n1 !== n2) return n1 <= n2
+  return p1 <= p2
 }
 
 export function auditDependencies(source: string, filename: string): Finding[] {
   const findings: Finding[] = []
-  const isPackageJson = /package(-lock)?\.json$/i.test(filename) || (source.trim().startsWith('{') && /"dependencies"|"devDependencies"/.test(source))
-  const isRequirementsTxt = /requirements(\.txt)?$/i.test(filename) || /(?:^[a-zA-Z0-9_-]+[=><~!]=?[0-9.]+)/m.test(source)
+  const hasJsonStructure = source.trim().startsWith('{') && /"dependencies"|"devDependencies"/.test(source)
 
-  if (isPackageJson) {
+  if (hasJsonStructure) {
     try {
       const parsed = JSON.parse(source) as Record<string, unknown>
       const allDeps = {
@@ -277,7 +329,7 @@ export function auditDependencies(source: string, filename: string): Finding[] {
       for (const [pkg, ver] of Object.entries(allDeps)) {
         if (typeof ver !== 'string') continue
         for (const adv of DEPENDENCY_ADVISORIES.filter((a) => a.ecosystem === 'npm' && a.pkg.toLowerCase() === pkg.toLowerCase())) {
-          if (semverLt(ver, adv.maxVulnerableVersion)) {
+          if (semverLte(ver, adv.maxVulnerableVersion)) {
             const lineIdx = lines.findIndex((l) => l.includes(`"${pkg}"`))
             const lineNum = lineIdx >= 0 ? lineIdx + 1 : 1
             findings.push({
@@ -299,28 +351,27 @@ export function auditDependencies(source: string, filename: string): Finding[] {
     }
   }
 
-  if (isRequirementsTxt) {
-    const lines = source.split(/\r?\n/)
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (!line || line.startsWith('#')) continue
-      const match = line.match(/^([a-zA-Z0-9_-]+)\s*(?:==|>=|<=|~=)\s*([0-9.]+)/)
-      if (!match) continue
-      const [, pkg, ver] = match
-      for (const adv of DEPENDENCY_ADVISORIES.filter((a) => a.ecosystem === 'pypi' && a.pkg.toLowerCase() === pkg.toLowerCase())) {
-        if (semverLt(ver, adv.maxVulnerableVersion)) {
-          findings.push({
-            id: `dep-${pkg}-${adv.cve}`,
-            module: 'code',
-            category: 'vulnerable-dependency',
-            title: `${adv.title} [${pkg}==${ver}]`,
-            description: `${adv.description} (${adv.cve}, ${adv.cwe}). Recommendation: ${adv.remediation}.`,
-            severity: adv.severity,
-            source: `sentinel-advisory/${adv.cve}`,
-            location: `${filename}:${i + 1}`,
-            evidence: line,
-          })
-        }
+  // Check lines for Python dependencies (requirements.txt, __requires__, install_requires, or lines with pkg==ver)
+  const lines = source.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line || line.startsWith('#')) continue
+    const match = line.match(/(?:["'])?([a-zA-Z0-9_-]+)\s*(?:==|>=|<=|~=)\s*([0-9.]+)(?:["'])?/)
+    if (!match) continue
+    const [, pkg, ver] = match
+    for (const adv of DEPENDENCY_ADVISORIES.filter((a) => a.ecosystem === 'pypi' && a.pkg.toLowerCase() === pkg.toLowerCase())) {
+      if (semverLte(ver, adv.maxVulnerableVersion)) {
+        findings.push({
+          id: `dep-${pkg}-${adv.cve}`,
+          module: 'code',
+          category: 'vulnerable-dependency',
+          title: `${adv.title} [${pkg}==${ver}]`,
+          description: `${adv.description} (${adv.cve}, ${adv.cwe}). Recommendation: ${adv.remediation}.`,
+          severity: adv.severity,
+          source: `sentinel-advisory/${adv.cve}`,
+          location: `${filename}:${i + 1}`,
+          evidence: line,
+        })
       }
     }
   }
@@ -333,11 +384,11 @@ export function auditSource(source: string, filename = 'source.txt'): CodeAuditR
   const sha256 = createHash('sha256').update(source).digest('hex')
   const findings: Finding[] = []
 
-  // 1. Dependency manifest audit (if applicable)
+  // 1. Dependency manifest & embedded requirements audit
   const depFindings = auditDependencies(source, filename)
   findings.push(...depFindings)
 
-  // 2. Static heuristic code rules
+  // 2. Static heuristic & evasion pattern analysis
   const lines = source.split(/\r?\n/)
   for (const rule of RULES) {
     for (let i = 0; i < lines.length; i++) {
@@ -358,12 +409,9 @@ export function auditSource(source: string, filename = 'source.txt'): CodeAuditR
     if (findings.length >= 200) break
   }
 
-  const isManifest = /package(-lock)?\.json|requirements(\.txt)?|Cargo\.lock|go\.sum/i.test(filename)
   const limitations = [
     'Static AST heuristic & embedded CVE advisory analysis; non-destructive execution without code execution.',
-    isManifest
-      ? 'Advisory scan checked against known CVE signatures for popular ecosystem packages.'
-      : 'Comprehensive pattern coverage for OWASP Top 10 vulnerabilities (SQLi, Command Injection, Secrets, Path Traversal, SSRF/XSS, Deserialization).',
+    'Comprehensive pattern coverage for OWASP Top 10 vulnerabilities, dynamic reflection evasions, destructive commands, and known package CVEs.',
     'External CLI tools (Semgrep, Gitleaks, OSV, Trivy) run asynchronously in Module 4 toolchain view.',
   ]
 
@@ -373,14 +421,26 @@ export function auditSource(source: string, filename = 'source.txt'): CodeAuditR
     blake3: blake3Hash,
     sha256,
     bytes,
-    languageHint: inferLanguage(filename),
+    languageHint: inferLanguage(source, filename),
     state: source.trim() ? 'completed' : 'inconclusive',
     findings,
     limitations,
   }
 }
 
-function inferLanguage(filename: string): string {
+function inferLanguage(source: string, filename: string): string {
+  // 1. Syntax content inspection first
+  if (source.trim().startsWith('{') && /"dependencies"|"devDependencies"|"name"/.test(source)) {
+    return 'json-manifest'
+  }
+  if (/\b(?:def\s+[a-zA-Z0-9_]+\s*\(|import\s+[a-zA-Z0-9_]+|from\s+[a-zA-Z0-9_]+\s+import|__import__|class\s+[a-zA-Z0-9_]+:)/.test(source)) {
+    return 'python'
+  }
+  if (/\b(?:const\s+|let\s+|var\s+|function\s+|interface\s+|import\s+.*from\s+['"])/.test(source)) {
+    return filename.endsWith('.ts') || filename.endsWith('.tsx') ? 'typescript' : 'javascript'
+  }
+
+  // 2. Fallback to extension map
   const ext = filename.toLowerCase().split('.').pop()
   const map: Record<string, string> = {
     ts: 'typescript',

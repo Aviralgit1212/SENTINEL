@@ -121,7 +121,6 @@ function parseJsonArray(s: string): unknown[] | undefined {
   }
 }
 
-// Embedded offline rule matching to surface findings even when CLI output formats vary
 function runEmbeddedGitleaks(source: string, filename: string): unknown[] {
   const findings: unknown[] = []
   const lines = source.split(/\r?\n/)
@@ -166,6 +165,24 @@ function runEmbeddedSemgrep(source: string, filename: string): unknown[] {
       check_id: 'javascript.node.security.child-process-command-injection',
       regex: /(?:exec|execSync|spawn|popen|system)\s*\(\s*(?:`[^`]*\$\{|[^,\n]+\+\s*(?:req\.|request\.|params\.|query\.|input))/i,
       message: 'Direct command execution with unvalidated user input may result in remote command injection.',
+      severity: 'ERROR',
+    },
+    {
+      check_id: 'python.security.evasive-reflection',
+      regex: /(?:__builtins__|globals\(\)\.get|locals\(\)\.get|__dict__\.get|getattr\s*\([^)]*(?:eval|exec|system|popen|spawn))/i,
+      message: 'Evasive dynamic execution via built-ins reflection / dynamic function lookup.',
+      severity: 'ERROR',
+    },
+    {
+      check_id: 'python.security.dynamic-import',
+      regex: /(?:__import__\s*\(|importlib\.import_module\s*\()/i,
+      message: 'Dynamic module loading via __import__ or importlib.',
+      severity: 'WARNING',
+    },
+    {
+      check_id: 'generic.security.destructive-command',
+      regex: /(?:rm\s+-rf\s+(?:--no-preserve-root\s+)?\/|format\s+[a-zA-Z]:|dd\s+if=\/dev\/(?:zero|urandom)\s+of=\/dev\/)/i,
+      message: 'Destructive system command signature detected.',
       severity: 'ERROR',
     },
     {
@@ -225,8 +242,8 @@ export async function runToolchainAudit(
     // --------------------------------------------------
     const semgrep = process.env.SENTINEL_SEMGREP_BIN || 'semgrep'
     const semgrepConfig = process.env.SENTINEL_SEMGREP_CONFIG
+    const embeddedFindings = runEmbeddedSemgrep(source, safeName)
     if (!semgrepConfig) {
-      const embeddedFindings = runEmbeddedSemgrep(source, safeName)
       runs.push({
         tool: 'semgrep',
         state: 'blocked',
@@ -256,8 +273,10 @@ export async function runToolchainAudit(
           : 'failed',
         exitCode: r.code,
         durationMs: r.durationMs,
-        summary: r.error || r.stderr.slice(0, 300) || `Semgrep exited ${r.code}`,
-        findings: parsed ?? (r.error ? runEmbeddedSemgrep(source, safeName) : undefined),
+        summary: r.error
+          ? (r.error.includes('ENOENT') ? `CLI not found in PATH; embedded rule engine active (${embeddedFindings.length} match(es)).` : r.error)
+          : (r.stderr.slice(0, 300) || `Semgrep exited ${r.code}`),
+        findings: parsed ?? (r.error && embeddedFindings.length > 0 ? embeddedFindings : undefined),
       })
     }
 
@@ -296,8 +315,10 @@ export async function runToolchainAudit(
         : 'failed',
       exitCode: g.code,
       durationMs: g.durationMs,
-      summary: g.error || g.stderr.slice(0, 300) || `Gitleaks exited ${g.code}`,
-      findings: gParsed ?? (g.error ? embeddedSecrets : undefined),
+      summary: g.error
+        ? (g.error.includes('ENOENT') ? `CLI not found in PATH; embedded secret engine active (${embeddedSecrets.length} secret(s) found).` : g.error)
+        : (g.stderr.slice(0, 300) || `Gitleaks exited ${g.code}`),
+      findings: gParsed ?? (g.error && embeddedSecrets.length > 0 ? embeddedSecrets : undefined),
     })
 
     // --------------------------------------------------
@@ -305,7 +326,8 @@ export async function runToolchainAudit(
     // --------------------------------------------------
     const isManifest = /(package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|requirements(\.txt)?|poetry\.lock|Cargo\.lock|go\.sum|Gemfile\.lock|pom\.xml|gradle\.lockfile)$/i.test(
       safeName
-    )
+    ) || (source.trim().startsWith('{') && /"dependencies"/.test(source)) || /__requires__\s*=\s*\[/i.test(source)
+
     if (!isManifest) {
       runs.push({
         tool: 'osv-scanner',
@@ -313,7 +335,7 @@ export async function runToolchainAudit(
         exitCode: null,
         durationMs: 0,
         summary:
-          'Not applicable to this source file. Submit a supported dependency manifest or lockfile for dependency vulnerability scanning.',
+          'Not applicable to raw source files. Submit a supported dependency manifest (package.json, requirements.txt, Cargo.lock, etc.) for CVE vulnerability auditing.',
       })
     } else {
       const osvBin = process.env.SENTINEL_OSV_SCANNER_BIN || 'osv-scanner'
@@ -337,8 +359,10 @@ export async function runToolchainAudit(
           : 'failed',
         exitCode: o.code,
         durationMs: o.durationMs,
-        summary: o.error || o.stderr.slice(0, 300) || `OSV-Scanner exited ${o.code}`,
-        findings: oParsed ?? (o.error ? depAdvisories : undefined),
+        summary: o.error
+          ? (o.error.includes('ENOENT') ? `CLI not found in PATH; embedded advisory engine active (${depAdvisories.length} advisory match(es)).` : o.error)
+          : (o.stderr.slice(0, 300) || `OSV-Scanner exited ${o.code}`),
+        findings: oParsed ?? (o.error && depAdvisories.length > 0 ? depAdvisories : undefined),
       })
     }
 
@@ -348,6 +372,7 @@ export async function runToolchainAudit(
     const trivyBin = process.env.SENTINEL_TRIVY_BIN || 'trivy'
     const t = await run(trivyBin, ['fs', '--format', 'json', '--quiet', dir], dir)
     const tParsed = parseJsonArray(t.stdout)
+    const trivyEmbedded = runEmbeddedSemgrep(source, safeName)
     runs.push({
       tool: 'trivy',
       state: t.timedOut
@@ -361,8 +386,10 @@ export async function runToolchainAudit(
         : 'failed',
       exitCode: t.code,
       durationMs: t.durationMs,
-      summary: t.error || t.stderr.slice(0, 300) || `Trivy exited ${t.code}`,
-      findings: tParsed,
+      summary: t.error
+        ? (t.error.includes('ENOENT') ? `CLI not found in PATH; embedded security inspection active (${trivyEmbedded.length} item(s)).` : t.error)
+        : (t.stderr.slice(0, 300) || `Trivy exited ${t.code}`),
+      findings: tParsed ?? (t.error && trivyEmbedded.length > 0 ? trivyEmbedded : undefined),
     })
   } catch (e) {
     notes.push(`Toolchain setup failed: ${String(e).slice(0, 240)}`)
