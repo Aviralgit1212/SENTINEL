@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "EMAIL_ADDRESS": {
+      "sensitive": true,
+      "label": "Email Address"
+    },
+    "PHONE_NUMBER": {
+      "sensitive": true,
+      "label": "Phone Number"
+    },
+    "CREDIT_CARD": {
+      "sensitive": true,
+      "label": "Credit Card"
+    },
+    "US_SSN": {
+      "sensitive": true,
+      "label": "US Social Security Number"
+    },
+    "PERSON": {
+      "sensitive": true,
+      "label": "Person Name"
+    }
+  }
+}

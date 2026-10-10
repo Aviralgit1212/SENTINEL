@@ -1,0 +1,168 @@
+# ==============================================================================
+# SENTINEL Sovereign Core — Global Git Ignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Secrets
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+*.crt
+attestation_root.key
+.secrets/
+
+# ------------------------------------------------------------------------------
+# 2. Stage Notes & Internal Development Documentation
+# ------------------------------------------------------------------------------
+STAGE*.md
+STAGE*
+*_STAGE*.md
+TODO*.md
+SCRATCH*.md
+IMPLEMENTATION_PLAN*.md
+fail_proof_architecture_blueprint*.md
+
+# ------------------------------------------------------------------------------
+# 3. Python Virtual Environments, Bytecode & Tooling
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+.installed.cfg
+*.egg
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+var/
+sdist/
+wheels/
+*.manifest
+*.spec
+
+# ------------------------------------------------------------------------------
+# 4. Node.js & Frontend Artifacts
+# ------------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.turbo/
+server/dist/
+client/dist/
+dist/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+.eslintcache
+
+# ------------------------------------------------------------------------------
+# 5. Databases, Local Ledger & Ephemeral Storage
+# ------------------------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+audit_ledger.db
+audit_ledger.db-journal
+sentinel.db
+sentinel.db-journal
+dev_shm/
+tmp/
+scratch/
+vault/
+
+# ------------------------------------------------------------------------------
+# 6. Temporary, Scratch, Archives & Binary Dumps
+# ------------------------------------------------------------------------------
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+*.rej
+*.patch
+*.diff
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+*.rar
+*.gz
+*.bz2
+*.xz
+*.zst
+core
+core.*
+*.stackdump
+*.dmp
+*.crash
+.cache/
+*.cache
+.parcel-cache/
+
+# ------------------------------------------------------------------------------
+# 7. Operating System & Editor Specifics
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# IDE files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ------------------------------------------------------------------------------
+# 8. Logs & Diagnostic Dumps
+# ------------------------------------------------------------------------------
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock

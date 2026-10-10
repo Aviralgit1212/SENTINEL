@@ -1,0 +1,27 @@
+{
+  "name": "sentinel-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "tsx --test --test-concurrency=1 test/*.test.ts",
+    "fuzz:archive": "tsx scripts/fuzz-archive-parser.ts",
+    "calibrate": "tsx scripts/calibrate-analyzers.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
