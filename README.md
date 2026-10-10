@@ -10,131 +10,123 @@
 ```
 
 # 🛡️ SENTINEL Sovereign Core v3.0
-### *The Evidence-Driven, Fail-Closed Security & Privacy Verification Runtime*
+### *The Sovereign, Evidence-Driven Security & Privacy Verification Runtime*
 
 [![Release Tests](https://img.shields.io/badge/Acceptance%20Suite-79%2F79%20Passing-10b981?style=for-the-badge&logo=checkmarx&logoColor=white)]()
-[![Privacy PyTest](https://img.shields.io/badge/Privacy%20Shield-8%2F8%20Passing-3b82f6?style=for-the-badge&logo=pytest&logoColor=white)]()
-[![Cryptography](https://img.shields.io/badge/Attestation-Ed25519%20%2B%20HMAC--SHA256-8b5cf6?style=for-the-badge&logo=gnupg&logoColor=white)]()
-[![Zero-NAND RAM](https://img.shields.io/badge/Vault-Zero--NAND%20%2Fdev%2Fshm-f59e0b?style=for-the-badge&logo=linux&logoColor=white)]()
+[![Privacy Shield](https://img.shields.io/badge/Privacy%20Shield-8%2F8%20Passing-3b82f6?style=for-the-badge&logo=pytest&logoColor=white)]()
+[![Attestation](https://img.shields.io/badge/Attestation-Ed25519%20%2B%20HMAC--SHA256-8b5cf6?style=for-the-badge&logo=gnupg&logoColor=white)]()
+[![Zero-NAND RAM](https://img.shields.io/badge/Storage-Zero--NAND%20%2Fdev%2Fshm-f59e0b?style=for-the-badge&logo=linux&logoColor=white)]()
 [![License](https://img.shields.io/badge/License-Apache%202.0-64748b?style=for-the-badge&logo=apache&logoColor=white)]()
 
 <p align="center">
-  <b>SENTINEL</b> transforms security analysis from probabilistic heuristic guesswork into mathematically verifiable, non-repudiable proof.<br/>
-  Every evaluation carries full execution provenance, deterministic intermediate representations (SIR), counterfactual remediation plans, and cryptographic attestations.
+  <b>SENTINEL</b> is an enterprise-grade, fail-closed security and privacy runtime designed for mission-critical enterprise environments and sovereign AI pipelines.<br/>
+  It eliminates silent scanner omissions by compiling security evaluations into deterministic <b>Security Intermediate Representations (SIR)</b>, generating <b>Counterfactual Remediation Plans</b>, and signing outputs with <b>Ed25519 cryptographic attestations</b>.
 </p>
 
 ---
 
-[🚀 Quickstart](#-quickstart--one-command-launcher) •
-[🏛️ Architecture](#-system-architecture--dataflow) •
-[🔒 8 Invariants](#-the-8-sovereign-invariants) •
-[🎛️ 5 Core Modules](#-the-5-core-product-modules) •
-[🧩 Browser Extension](#-ai-guardian-manifest-v3-browser-extension) •
-[🧪 5-Minute Live Demos](#-5-minute-interactive-demo-tour) •
-[📡 API Reference](#-complete-rest--two-phase-sse-api-reference)
+[📖 Executive Summary](#-executive-summary) •
+[🏛️ System Architecture](#-system-architecture--subsystem-deep-dive) •
+[🔒 The 8 Sovereign Invariants](#-the-8-sovereign-invariants) •
+[🎛️ The 5 Core Modules](#-the-5-core-product-modules) •
+[🧩 Browser Extension Bridge](#-ai-guardian-manifest-v3-browser-extension) •
+[🚀 Quickstart](#-quickstart--installation) •
+[🛠️ Supervisor CLI](#-master-supervisor-orchestrator-mainpy) •
+[📡 Complete API Reference](#-complete-rest--two-phase-sse-api-reference) •
+[🧪 Verification Gates](#-formal-verification-gates--calibration-lab) •
+[🛡️ Threat Model](#-threat-model--security-perimeter)
 
 ---
 
 </div>
 
-## 🌟 Why SENTINEL Exists
+## 📖 Executive Summary
 
-Modern security scanners suffer from a catastrophic design flaw: **silent omission**. When an analyzer crashes, exceeds a timeout, or is missing a plugin, traditional tools swallow the error and present the user with a misleading green checkmark.
+### The Fundamental Flaw in Traditional Security Scanners
+Most existing security tools and compliance pipelines operate on a **fail-open** assumption:
+$$\text{Verdict} = \begin{cases} \text{BLOCK}, & \text{if } \text{KnownThreatFound}(D) \\ \text{ALLOW}, & \text{otherwise} \end{cases}$$
+
+When an underlying analyzer runs out of memory, encounters an unsupported container format, suffers a network timeout, or simply isn't installed, the exception is caught, discarded, and the system reports **"0 Threats Detected"**. This silent omission is a catastrophic attack vector in modern enterprise software supply chains and generative AI ingestion pipelines.
+
+### The SENTINEL Sovereign Guarantee
+SENTINEL redesigns security evaluation around **Epistemic Honesty** and **Formal Coverage Fusion**:
+$$\text{Verdict} = \begin{cases} \text{BLOCK}, & \text{if } \exists f \in \text{Findings} \text{ s.t. } \text{Severity}(f) \ge \text{CRITICAL} \\ \text{REVIEW\_REQUIRED}, & \text{if } \exists a \in \text{Analyzers} \text{ s.t. } \text{State}(a) \in \{\text{FAILED}, \text{UNAVAILABLE}\} \\ \text{ALLOW}, & \text{if } \forall a \in \text{ApplicableAnalyzers}, \text{State}(a) = \text{COMPLETED} \land \text{Findings} = \emptyset \end{cases}$$
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│ ❌ TRADITIONAL SCANNERS (Fail-Open / Silent Omission)                                 │
-│ Container Bomb / Crash ──► Analyzer Returns Error ──► Emits "0 Findings" (False Clean)│
-└───────────────────────────────────────────────────────────────────────────────────────┘
-                                           VS
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│ ✅ SENTINEL SOVEREIGN CORE (Fail-Closed Multi-Scanner Fusion)                         │
-│ Container Bomb / Crash ──► Analyzer Returns Error ──► Verdict: REVIEW_REQUIRED (Safe) │
-└───────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ ❌ TRADITIONAL SCANNERS (Silent Omission / False Clean)                                │
+│ Container Bomb / Missing Plugin ──► Uncaught Error Swallowed ──► "Clean Scan" (0 Flaws)│
+└────────────────────────────────────────────────────────────────────────────────────────┘
+                                            VS
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ ✅ SENTINEL SOVEREIGN CORE (Fail-Closed Multi-Scanner Fusion)                          │
+│ Container Bomb / Missing Plugin ──► Explicit Coverage Gap ──► Verdict: REVIEW_REQUIRED │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
-
-### Core Philosophical Pillars:
-1. **Epistemic Honesty:** The absence of a detection tool is **never** treated as proof of safety.
-2. **Evidence, Not Vibes:** Every security finding includes raw hex offsets, character spans, bounding boxes, or AST pointers.
-3. **Differential Perception:** We explicitly isolate what a human visual renderer displays versus what an LLM tokenizer extracts to block stealth prompt injections.
-4. **Zero-NAND Ephemeral Storage:** Sensitive artifacts are processed strictly in volatile memory (`/dev/shm` tmpfs or memory buffers) and scrubbed immediately after verification.
 
 ---
 
 ## 🔒 The 8 Sovereign Invariants
 
-Every evaluation in SENTINEL strictly adheres to 8 formal mathematical and architectural invariants:
+Every subsystem and analyzer in SENTINEL strictly adheres to 8 mathematically verifiable invariants:
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   THE 8 SOVEREIGN INVARIANTS                                     │
-├──────────────────────────────┬───────────────────────────────────────────────────────────────────┤
-│ 1. Fail-Closed Fusion        │ Global verdict degrades to REVIEW_REQUIRED if ANY check is        │
-│                              │ incomplete, missing, or timed out.                                │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 2. Epistemic Transparency    │ Analyzers output explicit states: completed, finding, failed,    │
-│                              │ unavailable, or not_applicable.                                   │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 3. Zero-NAND RAM Vault       │ Artifact bytes reside strictly in volatile RAM (/dev/shm tmpfs).  │
-│                              │ Unlinked immediately after scan; zero permanent NAND writes.      │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 4. Differential Perception   │ Traps invisible text, zero-width steganography, and micro-fonts   │
-│                              │ crafted to manipulate LLMs without human visual detection.        │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 5. Transactional Twin        │ Redactions execute on isolated document twins; re-scanned to      │
-│                              │ guarantee 0.00% sensitive residue before releasing download keys. │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 6. Cryptographic Proof       │ SARIF v2.1 reports are signed using persistent local Ed25519 keys  │
-│                              │ and machine-root HMAC for verifiable non-repudiation.             │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 7. Deterministic SIR & DAG   │ Security Intermediate Representation (SIR) compiles evidence into │
-│                              │ a content-minimized, SHA-256 canonical directed acyclic graph.    │
-├──────────────────────────────┼───────────────────────────────────────────────────────────────────┤
-│ 8. Counterfactual Planning   │ Computes the minimal topological sequence of actions required to  │
-│                              │ transition an artifact from BLOCKED/REVIEW to ALLOW.              │
-└──────────────────────────────┴───────────────────────────────────────────────────────────────────┘
-```
+| # | Invariant | Formal Definition & Guarantee |
+|---|---|---|
+| **1** | **Fail-Closed Verdict Fusion** | An evaluation is **never** granted an `ALLOW` verdict if any applicable analyzer failed, was killed due to limits, or was unconfigured. |
+| **2** | **Epistemic Status Differentiation** | Analyzers must explicitly return one of five typed states: `completed`, `finding`, `failed`, `unavailable`, or `not_applicable`. |
+| **3** | **Zero-NAND Ephemeral RAM Vault** | Untrusted payload bytes live strictly in volatile memory (`/dev/shm` tmpfs on Linux, isolated memory buffers cross-platform). Paths are sandboxed and unlinked immediately post-scan. |
+| **4** | **Differential Perception Engine** | Isolates divergence between human visual rendering and LLM token stream extraction: $\Delta_{\text{Perception}} = \text{Extract}_{\text{Tokenizer}}(D) \setminus \text{Render}_{\text{Visual}}(D)$. Traps micro-fonts, opacity-0 text, and invisible prompt injections. |
+| **5** | **Transactional Twin Redaction** | Redactions execute on isolated memory twins. The derivative file is parsed from scratch and verified for **0.00% sensitive residue** before issuing a single-use download token. |
+| **6** | **Cryptographic Attestation** | Assessment reports are compiled to SARIF v2.1 and signed using an asymmetric Ed25519 keypair and local machine-root HMAC-SHA256 for non-repudiation and tamper detection. |
+| **7** | **Deterministic SIR & Evidence DAG** | Evidence is compiled into a content-minimized Directed Acyclic Graph (DAG) with a deterministic SHA-256 canonical representation digest. |
+| **8** | **Counterfactual Action Planner** | Inverts the blocker dependency graph to output the minimal, topologically sorted sequence of user actions required to achieve an `ALLOW` state. |
 
 ---
 
-## 📐 System Architecture & Dataflow
+## 🏛️ System Architecture & Subsystem Deep Dive
+
+SENTINEL is composed of decoupled, highly isolated micro-runtimes coordinated through typed IPC and a master process supervisor:
 
 ```mermaid
 flowchart TD
-    subgraph ClientLayer ["Client & Extension Layer"]
-        UI["🖥️ React + Vite Web Workbench\n(Port 5173)"]
-        Ext["🧩 AI Guardian Extension\n(Manifest V3)"]
+    subgraph ClientSpace ["User & Integration Layer"]
+        UI["🖥️ React + Vite Web Workbench\n(Port 5173)\n• Threat Inspector\n• Privacy Shield\n• Differential Perception\n• Time Machine & Attestation\n• Two-Phase SSE Live Stream"]
+        Ext["🧩 AI Guardian Extension\n(Manifest V3)\n• Prompt Interceptor\n• Attachment Gating\n• Origin-Bound HMAC Bridge"]
     end
 
-    subgraph SupervisorLayer ["Master Supervisor (main.py)"]
-        Supervisor["⚙️ Process Orchestrator & Signal Hub"]
+    subgraph SupervisorSpace ["Supervisor & Lifecycle Orchestrator (main.py)"]
+        Supervisor["⚙️ Master Process Supervisor\n• Process Health Probes\n• Signal Handler (SIGINT/SIGTERM)\n• Subsystem Lifecycle Manager"]
     end
 
-    subgraph SecurityCore ["SENTINEL Core Engine (Port 5001)"]
-        API["📡 Express REST / Two-Phase SSE Gateway"]
-        Vault["⚡ Zero-NAND Ephemeral Vault\n(/dev/shm tmpfs, Mode 0700)"]
-        Worker["🛡️ Sandboxed Archive Worker\n(bwrap / prlimit isolation)"]
-        SIR["📊 Security Intermediate Representation\n(Typed Graph Compiler)"]
-        DAG["🔗 Content-Minimized Evidence DAG"]
-        Planner["🧠 Counterfactual Action Planner"]
-        STM["⏳ Security Time Machine\n(SQLite + Attestation Root)"]
+    subgraph CoreSpace ["SENTINEL Core Engine (Node.js / Express - Port 5001)"]
+        Gateway["📡 REST & Two-Phase SSE API Gateway"]
+        Vault["⚡ Zero-NAND Ephemeral Storage Tier\n• Linux /dev/shm tmpfs (Mode 0700)\n• In-Memory Buffer Fallback\n• Immediate Unlink Scrubber"]
+        Worker["🛡️ Sandboxed Archive Worker\n• Bubblewrap (bwrap) / prlimit\n• 3-Tier Nested Archive Recursion\n• Decompression Bomb Ratio Guards (10:1)"]
+        SIRCompiler["📊 Security Intermediate Representation (SIR)\n• Typed Graph Structure\n• Artifacts, Analyzers, Findings, Gaps"]
+        DAGGen["🔗 Deterministic Evidence DAG\n• Canonical JSON Serialization\n• SHA-256 Digest Minimization"]
+        Planner["🧠 Counterfactual Dependency Planner\n• Blocker Tree Inversion\n• Topologically Sorted Actions"]
+        STM["⏳ Security Time Machine\n• SQLite Immutable Evaluation Ledger\n• Epistemic Diff Engine (Additions/Removals)\n• Machine-Root HMAC & Ed25519 Keypair"]
     end
 
-    subgraph PrivacyShieldService ["Privacy Shield Service (Port 8000)"]
-        FastAPI["🚀 FastAPI / Uvicorn Server"]
-        Presidio["🔍 Presidio NLP + spaCy NER Engine"]
-        Redactor["✂️ Surgical Redactor\n(PDF / DOCX / Image / Text)"]
-        Residue["🔬 Fresh Derivative Residue Verifier"]
+    subgraph PrivacySpace ["Privacy Shield Service (Python FastAPI - Port 8000)"]
+        FastAPI["🚀 FastAPI Microservice"]
+        Sanitizer["🛡️ Unicode & Bidi Sanitizer\n• Zero-Width Stripper\n• RLO Directional Override Trap"]
+        Presidio["🔍 Presidio NLP Engine\n• spaCy Named Entity Recognition\n• PII / Credentials / Financial Rules"]
+        Redactor["✂️ Surgical Multi-Format Redactor\n• PDF Vector & Annotations Masking\n• DOCX Run-Level Replacement\n• Image Bounding-Box Overlay"]
+        ResidueGate["🔬 Fresh Derivative Residue Gate\n• Re-Extraction of Output Bytes\n• 0% Residual Sensitive Value Check\n• Expiring Single-Use Download Tokens"]
     end
 
-    Ext -- "HMAC Pairing & Origin Binding" --> API
-    UI -- "REST & Two-Phase SSE" --> API
-    API <--> Vault
-    API --> Worker
-    API --> SIR --> DAG --> Planner
-    API <--> STM
-    API -- "HMAC-Signed IPC" --> FastAPI
-    FastAPI --> Presidio --> Redactor --> Residue
+    UI -- "REST / Two-Phase SSE Stream" --> Gateway
+    Ext -- "Authenticated HMAC Requests" --> Gateway
+    Gateway <--> Vault
+    Gateway --> Worker
+    Gateway --> SIRCompiler --> DAGGen --> Planner
+    Gateway <--> STM
+    Gateway -- "HMAC-Authenticated IPC" --> FastAPI
+    FastAPI --> Sanitizer --> Presidio --> Redactor --> ResidueGate
+    Supervisor --> CoreSpace
+    Supervisor --> PrivacySpace
+    Supervisor --> ClientSpace
 ```
 
 ---
@@ -142,98 +134,98 @@ flowchart TD
 ## 🎛️ The 5 Core Product Modules
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                               SENTINEL WORKBENCH MODULE SUITE                                    │
-├─────────────────────┬─────────────────────┬─────────────────────┬────────────────────────────────┤
-│ 1. Threat Inspector │ 2. Privacy Shield   │ 3. Content Integrity│ 4. Code & Toolchain            │
-├─────────────────────┼─────────────────────┼─────────────────────┼────────────────────────────────┤
-│ • Magic Byte Match  │ • Multi-Entity PII  │ • Human vs LLM Dis- │ • Static AST Heuristics        │
-│ • Deep Archive Bomb │ • Surgical Redaction│   parity Engine     │ • Local Semgrep Bridge         │
-│ • Static PE Disasm  │ • 0% Residue Gate   │ • Steganography Trap│ • Gitleaks Token Detection     │
-│ • OOXML / Macros    │ • Single-Use Tokens │ • Prompt Injections │ • OSV Dependency Scanner       │
-├─────────────────────┴─────────────────────┴─────────────────────┴────────────────────────────────┤
-│                           5. Fix & Verify (Time Machine & Planner)                               │
-│  • Epistemic Diff Comparison   • Counterfactual Action Steps   • Cryptographic SARIF Signatures  │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   SENTINEL CORE MODULE MATRIX                                          │
+├──────────────────────┬──────────────────────┬──────────────────────┬───────────────────────────────────┤
+│ 1. Threat Inspector  │ 2. Privacy Shield    │ 3. Content Integrity │ 4. Code & Toolchain Auditor       │
+├──────────────────────┼──────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ • Magic-Byte Match   │ • Presidio NLP Engine│ • Differential Visual│ • AST Static Heuristics           │
+│ • Deep ZIP Recursion │ • Multi-Format Redact│   Disparity Analyzer │ • Local Semgrep Engine Bridge     │
+│ • Static PE Disasm   │ • 0% Residue Gate    │ • Steganography Trap │ • Gitleaks High-Entropy Secrets   │
+│ • OOXML / Macro Trap │ • Single-Use Tokens  │ • Prompt Injections  │ • OSV Vulnerability Scanner       │
+├──────────────────────┴──────────────────────┴──────────────────────┴───────────────────────────────────┤
+│                                5. Fix & Verify (Time Machine & Planner)                                │
+│   • Epistemic Diff Comparison     • Counterfactual Action Steps     • Ed25519 Signed SARIF Attestations│
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1. Threat Inspector & Deep Container Armor
-- **Magic-Byte Binary Validation:** Strips malicious file extensions; categorizes binaries via true header signatures.
-- **Deep ZIP Recursion Armor:** Recursively decompresses up to 3 tiers of nested archives with strict decompression ratio limits (10:1 ratio, 2,000 members, 50MB max extracted) and path traversal sanitization.
-- **Static PE/EXE Disassembly:** Analyzes PE32/PE32+ binaries, import/export address tables (IAT/EAT), section entropy (Shannon entropy detection for packed binaries), and embedded strings without executing payload code.
-- **OOXML & Document Armor:** Dissects Word/Excel packages for hidden macros, dynamic DDE links, and external OLE relationships.
+- **Magic-Byte Binary Identification**: Ignores deceptive file extensions; categorizes binaries strictly by raw file signatures.
+- **Deep Recursive Container Unpacker**: Traverses nested archives up to 3 levels deep. Enforces a **10:1 decompression ratio limit**, maximum 2,000 members, 16MB central directory limit, and 50MB total extracted size limit inside ephemeral memory vaults.
+- **Static Executable (PE/EXE) Disassembly**: Parses PE32/PE32+ headers, sections, export tables, import address tables (IAT), compiler fingerprints, and Shannon section entropy without executing code.
+- **OOXML & Document Structure Armor**: Parses Word (`.docx`), Excel (`.xlsx`), and PowerPoint (`.pptx`) archives for embedded VBA macros, dynamic DDE commands, and external relationship endpoints.
 
 ### 2. Privacy Shield & Surgical Redaction
-- **Presidio NLP Entity Engine:** Contextual machine-learning detection of PII, SSNs, credit card numbers, secret keys, email addresses, and IBANs.
-- **Bidi & Unicode Sanitizer:** Neutralizes zero-width spaces, right-to-left override attacks (RLO), and homoglyph spoofing.
-- **Multi-Format Redactor:** Performs pixel-precise bounding box redactions on images, vector overlays on PDFs, run-level replacements on DOCX, and regex substitutions on text.
-- **Fresh Derivative Residue Gate:** Re-extracts text from newly rendered derivative files and verifies **zero residual leakage** before issuing single-use download tokens.
+- **Presidio NLP Recognition**: Multi-lingual named entity recognition detecting PII, Social Security Numbers, Credit Cards, IBANs, Passwords, API Keys, and Custom Regex Patterns.
+- **Unicode & Bidi Armor**: Identifies and neutralizes zero-width spaces, right-to-left override attacks (RLO `\u202E`), and homoglyph substitution spoofing.
+- **Multi-Format Redactor**: Executes vector overlays on PDFs, run-level XML text replacement on DOCX, pixel-precise bounding-box masking on images, and string redactions on plaintext.
+- **Fresh Derivative Residue Gate**: Re-extracts text from the newly rendered document and verifies **zero residual leakage** of original sensitive values before generating a single-use download token.
 
 ### 3. Content Integrity & Differential Perception
-- **Human vs LLM Disparity Isolation:** Extracts document layers to identify content invisible to humans (font-size $\le 1$pt, opacity 0, background-colored text) that is ingested by LLM tokenizers.
-- **Stealth Prompt Injection Defense:** Detects delimiters, role impersonation tags (`<system>`, `[INST]`), and jailbreak directives hidden in document margins.
+- **Human vs LLM Disparity Isolation**: Extracts document layers to detect content crafted to be invisible to human readers (opacity 0, 1pt micro-fonts, white-on-white text, off-canvas coordinates) but ingested by LLM tokenizers.
+- **Stealth Prompt Injection Defense**: Traps delimiters, system role directives (`[INST]`, `<system>`), and jailbreak payloads embedded in document margins.
 
-### 4. Code Auditor & Offline Toolchain
-- **Static AST Pattern Matcher:** Analyzes source code for hardcoded secrets, weak cryptographic primitives, unsafe TLS configurations, and raw command executions.
-- **Offline Toolchain Bridge:** Seamlessly integrates with local `semgrep`, `gitleaks`, and `osv-scanner` CLI binaries without exfiltrating code to cloud servers.
+### 4. Code Auditor & Offline Toolchain Engine
+- **Static AST Heuristics**: Analyzes source code for hardcoded secrets, weak cryptographic primitives, unsafe TLS configurations, and dangerous shell execution calls without executing code.
+- **Local Toolchain Bridge**: Connects directly to local binaries of `semgrep`, `gitleaks`, and `osv-scanner` without transmitting source code to external servers.
 
-### 5. Fix & Verify (Time Machine & Counterfactual Planner)
-- **Security Time Machine:** Compares multiple evaluations of the exact same artifact over time, highlighting finding additions, remediations, and engine version drifts.
-- **Counterfactual Action Planner:** Inverts the finding dependency graph to generate an ordered, minimal checklist to bring any file into compliance.
+### 5. Fix & Verify (Security Time Machine & Counterfactual Planner)
+- **Security Time Machine**: Evaluates assessment history for the exact same artifact hash over time, computing epistemic diffs (new vulnerabilities, resolved findings, and ruleset version drifts).
+- **Counterfactual Action Planner**: Inverts the finding dependency graph to generate an ordered, minimal checklist required to transition an artifact from `BLOCKED` to `ALLOW`.
+- **Cryptographic SARIF Attestation**: Exports SARIF v2.1 reports containing embedded Ed25519 signatures and machine-root HMAC-SHA256 digests for verifiable non-repudiation.
 
 ---
 
 ## 🧩 AI Guardian: Manifest V3 Browser Extension
 
-The included Manifest V3 extension runs natively inside Chromium browsers, intercepting prompt submissions and uploaded documents in ChatGPT, Claude, and Gemini before data leaves your computer.
+The included Manifest V3 browser extension operates natively inside Chromium browsers (Chrome, Brave, Edge), intercepting prompts and document attachments inside AI portals (ChatGPT, Claude, Gemini) **before** they leave your workstation.
 
 ```
-                               AI GUARDIAN INTERCEPTION LIFECYCLE
-  ┌──────────────┐      Prompt / File      ┌──────────────────────┐      403 / Held      ┌──────────────┐
-  │ User Types / │ ──────────────────────► │ Interception Content │ ───────────────────► │ Send Blocked │
-  │ Attaches Doc │                         │ Script (Manifest V3) │                      │ Prompt User  │
-  └──────────────┘                         └──────────────────────┘                      └──────────────┘
-                                                       │
-                                                       ▼ HMAC Token + Origin Check
-                                           ┌──────────────────────┐
-                                           │  SENTINEL Core API   │
-                                           │     (Port 5001)      │
-                                           └──────────────────────┘
-                                                       │
-                                                       ▼ Verified Clean / Redacted
-                                           ┌──────────────────────┐
-                                           │ Release Send to LLM  │
-                                           └──────────────────────┘
+                              AI GUARDIAN INTERCEPTION WORKFLOW
+  ┌─────────────────┐       Prompt / File       ┌────────────────────────┐       403 / Blocked       ┌─────────────────┐
+  │ User Submits    │ ────────────────────────► │ AI Guardian Content    │ ────────────────────────► │ Send Intercepted│
+  │ Prompt / Upload │                           │ Script (Manifest V3)   │                           │ Prompt Review   │
+  └─────────────────┘                           └────────────────────────┘                           └─────────────────┘
+                                                             │
+                                                             ▼ Authenticated IPC (Token + Origin Bound)
+                                                ┌────────────────────────┐
+                                                │  SENTINEL Core Gateway │
+                                                │      (Port 5001)       │
+                                                └────────────────────────┘
+                                                             │
+                                                             ▼ Verified Clean / Redacted
+                                                ┌────────────────────────┐
+                                                │ Release Payload to LLM │
+                                                └────────────────────────┘
 ```
 
-### Setup in 60 Seconds:
+### Pairing Setup in 60 Seconds:
 1. Open Chrome/Brave and navigate to `chrome://extensions`.
-2. Enable **Developer mode** (top right) $\rightarrow$ Click **Load unpacked**.
+2. Toggle **Developer Mode** (top right) $\rightarrow$ Click **Load Unpacked**.
 3. Select the [`browser-extension/`](file:///home/hdd/hackathons/kiet/sentinel-stage19-full/browser-extension) directory.
-4. Copy your unique Extension ID (`chrome-extension://<id>`).
+4. Copy your Extension Origin (`chrome-extension://<id>`).
 5. Configure `.env`:
    ```env
    SENTINEL_EXTENSION_ORIGIN=chrome-extension://<your-extension-id>
    SENTINEL_EXTENSION_TOKEN=your-random-32-char-secret-token-here
    ```
-6. Open the extension options in your browser, enter `http://127.0.0.1:5001` and your token.
+6. Open the extension options dialog in your browser, enter `http://127.0.0.1:5001` and your token.
 
 ---
 
-## 🚀 Quickstart & One-Command Launcher
+## 🚀 Quickstart & Installation
 
-### Prerequisites
-- **Python 3.11+** (managed with `uv` or `venv`)
+### System Prerequisites
+- **Python 3.11+** (`uv` recommended)
 - **Node.js 18+** & `npm`
-
-### Installation:
+- **Linux / macOS / Windows** (Linux enables native `/dev/shm` tmpfs RAM vaulting and `bwrap` sandboxing)
 
 ```bash
-# 1. Clone repository
+# 1. Clone the repository
 git clone https://github.com/Aviralgit1212/SENTINEL.git
 cd SENTINEL
 
-# 2. Setup Python environment with uv
+# 2. Setup Python environment using uv
 uv venv
 source .venv/bin/activate
 uv pip install -r privacy-service/requirements.txt -r python-analyzers/requirements.txt
@@ -245,7 +237,7 @@ cd client && npm ci && cd ..
 # 4. Initialize environment configuration
 cp .env.example .env
 
-# 5. Launch the entire Sovereign Core platform
+# 5. Launch the full platform
 python main.py
 ```
 
@@ -256,103 +248,89 @@ python main.py
 
 ---
 
-## 🛠️ Master Supervisor CLI (`main.py`)
+## 🛠️ Master Supervisor Orchestrator (`main.py`)
 
-SENTINEL is managed by a master Python supervisor that coordinates microservices, handles graceful signal propagation (`SIGINT`/`SIGTERM`), and runs verification harnesses:
+SENTINEL is managed by a unified Python orchestrator that handles microservice lifecycles, health probing, cross-platform environments, and atomic teardowns:
 
-| Command | Purpose |
-|---|---|
-| `python main.py` | Starts full production stack (FastAPI + Node API + React Client) |
-| `python main.py --dev` | Starts stack in live development mode with hot-reloading |
-| `python main.py --server-only` | Starts backend microservices only (headless mode) |
-| `python main.py --test` | Runs full verification suite (**8 PyTest + 79 Node Tests**) |
-| `python main.py --fuzz` | Runs 5,000-case ZIP metadata mutation fuzzer |
-| `python main.py --calibrate` | Runs analyzer trust & calibration lab |
-| `python main.py --health` | Probes HTTP endpoints of running daemons |
+```bash
+# Launch full production stack (FastAPI + Node Core API + React Client)
+python main.py
 
----
+# Launch in development mode with live hot-reloading
+python main.py --dev
 
-## 🧪 5-Minute Interactive Demo Tour
+# Launch backend microservices only (Headless mode)
+python main.py --server-only
 
-Follow these 5 steps to verify all core capabilities:
+# Run the complete release acceptance test suite (8 PyTest + 79 Node tests)
+python main.py --test
 
-### Demo 1: Stealth Prompt Injection Defense (Differential Perception)
-1. Navigate to **Threat Inspector** on `http://localhost:5173`.
-2. Upload a PDF containing white-on-white text or 1pt font with system override directives.
-3. **Observed Result:** Verdict shows `REVIEW_REQUIRED` or `BLOCKED`. Finding indicates `pdf-prompt-injection` with exact extracted invisible text and coordinates.
+# Run the 5,000-case archive mutation fuzzer
+python main.py --fuzz
 
-### Demo 2: ZIP Bomb & Deep Nested Container Traversal
-1. Upload a deeply nested archive (e.g. 3 levels of ZIP containers).
-2. **Observed Result:** Threat Inspector displays full recursive member tree, passes members to ClamAV/structural analyzers, and enforces the 10:1 decompression ratio limit.
+# Run the analyzer trust & calibration lab
+python main.py --calibrate
 
-### Demo 3: Privacy Shield with Zero-Residue Redaction
-1. Navigate to **Privacy Shield** $\rightarrow$ paste text containing credit cards and emails.
-2. Select entities to redact $\rightarrow$ Click **Apply Redaction**.
-3. **Observed Result:** Derivative is generated in RAM, re-scanned for 0% residual leakage, and assigned a cryptographic SHA-256 with a single-use download token.
-
-### Demo 4: Security Time Machine & Cryptographic Verification
-1. Navigate to **Time Machine & Attestation** tab.
-2. Export a scan report as **Signed SARIF v2.1**.
-3. Paste the SARIF JSON into the verification panel $\rightarrow$ Click **Verify Cryptographic Signature**.
-4. **Observed Result:** Confirms untampered payload using local Ed25519 public key and machine HMAC root.
-
-### Demo 5: AI Guardian Browser Interception
-1. Open ChatGPT or Claude with the AI Guardian extension installed.
-2. Type a prompt containing an SSN or AWS Secret Key $\rightarrow$ Hit Enter.
-3. **Observed Result:** The extension blocks the send event, displays an in-browser alert, and prompts the user to redact sensitive tokens before release.
-
----
-
-## ⚙️ Environment & Security Configuration (`.env`)
-
-```ini
-# ==============================================================================
-# SENTINEL Sovereign Core — Configuration
-# ==============================================================================
-
-# Core API Gateway (Node.js / Express)
-SENTINEL_PORT=5001
-HOST=127.0.0.1
-NODE_ENV=production
-
-# Privacy Shield Service (FastAPI / Presidio)
-PRIVACY_PORT=8000
-PRIVACY_HOST=127.0.0.1
-PRIVACY_SERVICE_URL=http://127.0.0.1:8000
-
-# Zero-NAND RAM Vault (Options: 'ram' for /dev/shm tmpfs, 'secure_temp' for disk fallback)
-SENTINEL_VAULT_TIER=ram
-
-# Cryptographic Attestation Root Key
-SENTINEL_SIGNING_KEY_PATH=./server/data/sentinel-signing.key
-
-# AI Guardian Browser Extension Security Bridge
-SENTINEL_EXTENSION_ORIGIN=chrome-extension://abcdefghijklmnopabcdefghijklmnop
-SENTINEL_EXTENSION_TOKEN=replace_with_a_secure_random_32_byte_hex_token
-
-# Offline Toolchain Integrations (Optional)
-SENTINEL_SEMGREP_CONFIG=auto
+# Probe the health of running background daemons
+python main.py --health
 ```
+
+---
+
+## ⚙️ Environment Configuration (`.env`)
+
+| Variable | Default Value | Purpose | Security Implication |
+|---|---|---|---|
+| `SENTINEL_PORT` | `5001` | Core Security API port | Bind to `127.0.0.1` to prevent external network access |
+| `HOST` | `127.0.0.1` | Network interface binding | Prevents DNS rebinding and LAN exposure |
+| `PRIVACY_PORT` | `8000` | FastAPI Privacy Shield port | Local microservice port |
+| `PRIVACY_SERVICE_URL` | `http://127.0.0.1:8000` | IPC bridge URL | Used by Node API to dispatch privacy scans |
+| `SENTINEL_VAULT_TIER` | `ram` | `ram` (`/dev/shm`) or `secure_temp` | In `ram` mode, payloads never touch permanent NAND |
+| `SENTINEL_SIGNING_KEY_PATH` | `./server/data/sentinel-signing.key` | Machine HMAC root key path | Key created with mode `0600` |
+| `SENTINEL_EXTENSION_ORIGIN` | `chrome-extension://...` | Authorized extension origin | Enforces strict CORS and origin verification |
+| `SENTINEL_EXTENSION_TOKEN` | *32+ char secret* | Extension pairing token | Unauthenticated requests return `403 Forbidden` |
+| `SENTINEL_SEMGREP_CONFIG` | `auto` | Semgrep local ruleset path | Offline rule verification |
 
 ---
 
 ## 📡 Complete REST & Two-Phase SSE API Reference
 
 ### 1. Two-Phase Real-Time Scan Stream
-`POST /api/v3/scan-stream` (Multipart `file`)
+`POST /api/v3/scan-stream`  
+**Content-Type:** `multipart/form-data` (Field: `file`)
+
 Streams real-time diagnostic and execution events:
 ```bash
-curl -N -F "file=@sample_invoice.pdf" http://127.0.0.1:5001/api/v3/scan-stream
+curl -N -F "file=@document.pdf" http://127.0.0.1:5001/api/v3/scan-stream
 ```
-*Event Lifecycle:*
-```
-[intake_ack] ──► [analysis_started] ──► [sir_compiled] ──► [finding*] ──► [counterfactual_plan] ──► [complete]
+
+**Stream Lifecycle Events:**
+```json
+// 1. Intake Acknowledged
+event: intake_ack
+data: {"scanId":"sc_1892a","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":1048576,"storageTier":"ram"}
+
+// 2. SIR Compiled
+event: sir_compiled
+data: {"graph":{"nodes":[{"id":"art_1","type":"artifact"},{"id":"an_pdf","type":"analyzer"}],"edges":[]}}
+
+// 3. Security Finding Emitted
+event: finding
+data: {"id":"fnd_1","category":"differential-perception","severity":"HIGH","title":"Hidden prompt injection in PDF stream"}
+
+// 4. Counterfactual Plan Emitted
+event: counterfactual_plan
+data: {"targetVerdict":"allow","actions":[{"step":1,"action":"strip-invisible-text","impact":"resolves_fnd_1"}]}
+
+// 5. Complete Report with Attestation
+event: complete
+data: {"verdict":"review_required","sarifDoc":{...},"attestation":{"algorithm":"Ed25519","signature":"..."}}
 ```
 
 ### 2. Standard Multipart File Inspection
 `POST /api/scans` (Multipart `file`)
 ```bash
-curl -F "file=@application.zip" http://127.0.0.1:5001/api/scans
+curl -F "file=@package.zip" http://127.0.0.1:5001/api/scans
 ```
 
 ### 3. Content-Minimized Evidence DAG
@@ -366,7 +344,7 @@ curl http://127.0.0.1:5001/api/scans/<scan_id>/evidence
 ```bash
 curl -X POST http://127.0.0.1:5001/api/privacy/scan-text \
   -H "Content-Type: application/json" \
-  -d '{"text": "Confidential: User Alice (alice@company.com) API Key: sk_live_991283"}'
+  -d '{"text": "Confidential: User Alice (alice@company.com) with SSN 000-12-3456"}'
 ```
 
 ### 5. Ed25519 & HMAC SARIF Receipt Verification
@@ -377,17 +355,13 @@ curl -X POST http://127.0.0.1:5001/api/attestations/verify \
   -d '{"sarif": {...}, "algorithm": "Ed25519"}'
 ```
 
-### 6. Security Time Machine Assessment Comparison
-`GET /api/scans/:scanId/compare/:otherScanId`
-Compares historical evaluations for the exact same artifact hash.
-
 ---
 
-## 🧪 Formal Verification Gates & Trust Lab
+## 🧪 Formal Verification Gates & Calibration Lab
 
-SENTINEL enforces 8 rigorous release acceptance gates across 87 automated tests:
+SENTINEL enforces 8 rigorous release acceptance gates tested across 87 automated tests:
 
-| Gate | Verification Target | Test Count | Result |
+| Gate | Target Subsystem | Test Count | Status |
 |---|---|---|---|
 | **Gate 01** | Zero-NAND Ephemeral RAM Vault & Storage Isolation | 7 Tests | ✅ Pass |
 | **Gate 02** | Deep Archive Armor & 5,000-Case Mutation Fuzzer | 8 Tests | ✅ Pass |
@@ -398,24 +372,24 @@ SENTINEL enforces 8 rigorous release acceptance gates across 87 automated tests:
 | **Gate 07** | Cryptographic Attestation (Ed25519 & Machine HMAC) | 6 Tests | ✅ Pass |
 | **Gate 08** | AI Guardian Extension Bridge & Origin-Bound Handshake | 5 Tests | ✅ Pass |
 
-Run the complete verification suite:
+Run the complete test harness:
 ```bash
 python main.py --test
 ```
 
 ---
 
-## 🛡️ Threat Model & Security Boundaries
+## 🛡️ Threat Model & Security Perimeter
 
-### What SENTINEL Formally Guarantees:
-- **Zero Silent Omissions:** Errored, timed-out, or missing analyzers always degrade verdict to `REVIEW_REQUIRED`.
-- **Ephemeral Payload Vaulting:** Payload bytes are stored only in RAM (`/dev/shm` tmpfs) and unlinked immediately.
-- **Non-Repudiation:** Any manual tampering with SARIF assessment documents is cryptographically detected.
-- **Zero Sensitive Residue:** Redacted derivative documents are guaranteed to contain 0 instances of original unmasked tokens.
+### Formally Guaranteed Security Boundaries:
+- **Zero Silent Failures**: Missing, crashed, or unconfigured analyzers always force `REVIEW_REQUIRED`.
+- **Ephemeral Payload Processing**: Artifact bytes exist only in `/dev/shm` tmpfs and are securely scrubbed from memory after processing.
+- **Tamper Evidence**: SARIF exports signed with Ed25519 and HMAC roots detect any post-scan modification.
+- **Cryptographic Residue Prevention**: Derivative documents are re-parsed to confirm that zero unmasked tokens remain.
 
-### What is Explicitly Out of Scope:
-- **Dynamic Binary Sandboxing:** SENTINEL performs deep static and structural disassembly; it does not execute untrusted binaries.
-- **External Cloud Telemetry:** SENTINEL is 100% sovereign; zero document bytes or hashes are sent to third-party clouds.
+### Explicit Non-Goals:
+- **Dynamic Binary Sandboxing**: SENTINEL performs deep static disassembly; it does not execute untrusted binaries.
+- **Cloud Telemetry**: SENTINEL is 100% sovereign; no document bytes or hashes are transmitted to external third-party cloud services.
 
 ---
 
