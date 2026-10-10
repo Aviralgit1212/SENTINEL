@@ -134,8 +134,7 @@ export default function ThreatInspector() {
                 <span className={`verdict ${verdictClass[report.verdict]}`}>{report.verdict.replace(/_/g, ' ')}</span>
               </h3>
               <div className="muted mono small">
-                {report.blake3 && <>blake3: <span className="mono">{report.blake3.slice(0, 20)}…</span> · </>}
-                sha256: <span className="mono">{report.sha256.slice(0, 20)}…</span> · {(report.size / 1024).toFixed(1)} KB ·{' '}
+                blake3: <span className="mono">{(report.blake3 || report.sha256).slice(0, 24)}…</span> · {(report.size / 1024).toFixed(1)} KB ·{' '}
                 {new Date(report.createdAt).toLocaleString()}
               </div>
             </div>

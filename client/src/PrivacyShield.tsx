@@ -197,7 +197,7 @@ export default function PrivacyShield() {
               </h4>
               <p className="muted small">
                 The generated file was re-opened and re-scanned. No original sensitive values remain in the inspected regions.
-                New sha256: <span className="mono">{redacted.sha256.slice(0, 24)}…</span>
+                Identity (BLAKE3): <span className="mono">{redacted.sha256.slice(0, 24)}…</span>
               </p>
               <a className="button" href={redacted.downloadUrl}>
                 Download verified output

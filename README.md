@@ -35,6 +35,8 @@
 [🧠 Counterfactual Action Planner](#-counterfactual-action-planner) •
 [🧩 AI Guardian Browser Extension](#-ai-guardian-manifest-v3-browser-extension) •
 [🚀 Quickstart & Installation](#-quickstart--installation) •
+[⚡ BLAKE3 Standard](#-high-performance-blake3-cryptographic-identity) •
+[📦 Toolchain & ClamAV Setup](#-security-toolchain--dependency-installation-guide) •
 [🛠️ Master Supervisor CLI](#-master-supervisor-cli-mainpy) •
 [📡 Complete REST & SSE API Reference](#-complete-rest--two-phase-sse-api-reference) •
 [🧪 Verification Gates & Testing Matrix](#-formal-verification-gates--trust-lab) •
@@ -395,6 +397,108 @@ python main.py
 - **Web Workbench UI:** `http://localhost:5173`
 - **Core Security REST API:** `http://127.0.0.1:5001`
 - **Privacy Shield Engine:** `http://127.0.0.1:8000`
+
+---
+
+## ⚡ High-Performance BLAKE3 Cryptographic Identity
+
+SENTINEL replaces legacy serial SHA-256 with **BLAKE3 parallel tree-hashing** across the entire pipeline:
+- **4–8x Faster Throughput**: Parallel SIMD tree hashing computes artifact digests in single-digit milliseconds even for multi-megabyte files.
+- **Constant-Time Verification**: Instant verification of document twins, SARIF attestations, and redacted outputs.
+- **Dual-Hash Compatibility**: Reports both `blake3` and `sha256` for strict legacy interoperability and SARIF v2.1 compliance.
+
+---
+
+## 📦 Security Toolchain & Dependency Installation Guide
+
+SENTINEL operates in **two operational modes**:
+1. **Zero-Dependency Sovereign Mode (Default)**: Runs immediately on any clean OS without external system packages. Built-in embedded engines handle OWASP Top 10 rules, secret detection, and CVE advisory checks without requiring external binaries (`SENTINEL_REQUIRE_CLAMAV=0`).
+2. **Production Multi-Engine Toolchain Mode**: Integrates local offline security CLI binaries for enterprise-grade defense in depth.
+
+### 1. ClamAV Antivirus Daemon Setup (Optional / Production)
+
+When enabled (`SENTINEL_REQUIRE_CLAMAV=1`), SENTINEL connects to the local ClamAV daemon via UNIX socket (`/tmp/clamd.socket` or `/var/run/clamav/clamd.ctl`) or TCP (`127.0.0.1:3310`).
+
+#### Ubuntu / Debian:
+```bash
+sudo apt update
+sudo apt install -y clamav clamav-daemon
+# Update virus signatures
+sudo systemctl stop clamav-freshclam
+sudo freshclam
+sudo systemctl start clamav-daemon
+sudo systemctl enable clamav-daemon
+```
+
+#### Arch Linux / Manjaro:
+```bash
+sudo pacman -S clamav
+sudo freshclam
+sudo systemctl start clamav-daemon
+```
+
+#### Fedora / RHEL:
+```bash
+sudo dnf install -y clamav clamd clamav-update
+sudo freshclam
+sudo systemctl start clamd@scan
+```
+
+#### macOS (Homebrew):
+```bash
+brew install clamav
+freshclam
+brew services start clamav
+```
+
+#### Verification:
+```bash
+# Check daemon socket or port
+clamdscan --version
+# Test EICAR standard test signature
+python main.py --test
+```
+
+### 2. Static Code & Secret Scanners (Module 4 Toolchain)
+
+#### Semgrep (Static Code Analysis):
+```bash
+# Via Python pip (recommended)
+pip install semgrep
+# Via Homebrew (macOS)
+brew install semgrep
+
+# Configure in .env (optional):
+# SENTINEL_SEMGREP_CONFIG=p/default
+```
+
+#### Gitleaks (Secret & Token Detection):
+```bash
+# Linux (binary)
+curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz -C /usr/local/bin
+# macOS
+brew install gitleaks
+```
+
+#### Trivy (Filesystem & Container Security):
+```bash
+# Ubuntu / Debian
+sudo apt-get install wget apt-transport-https gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update && sudo apt-get install -y trivy
+
+# macOS
+brew install trivy
+```
+
+#### OSV-Scanner (Google Open Source Vulnerabilities):
+```bash
+# Via Go
+go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+# Via Homebrew
+brew install osv-scanner
+```
 
 ---
 
