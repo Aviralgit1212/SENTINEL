@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>SENTINEL AI Guardian</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      width: 320px; margin: 0; padding: 14px;
+      font: 13px/1.5 system-ui, sans-serif;
+      background: #0b1020; color: #e5e7eb;
+    }
+    header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .logo {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg, #6366f1, #22d3ee);
+      display: grid; place-items: center; font-weight: 800; font-size: 15px;
+      color: #fff; flex: none;
+    }
+    h1 { font-size: 14px; margin: 0; letter-spacing: .3px; }
+    .sub { font-size: 11px; color: #9ca3af; }
+
+    section {
+      background: #131a2e; border: 1px solid #232b45; border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 10px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+    .k { color: #9ca3af; font-size: 12px; }
+    .v { font-size: 12px; font-weight: 600; }
+
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .ok { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+    .bad { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
+    .wait { background: #eab308; box-shadow: 0 0 6px #eab30888; }
+
+    .shortcut { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; }
+    .shortcut a { color: #67e8f9; text-decoration: none; }
+    .shortcut a:hover { text-decoration: underline; }
+    .open { color: #9ca3af; font-size: 15px; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    }
+    .badge.on { background: #052e16; color: #4ade80; border: 1px solid #16a34a55; }
+    .badge.off { background: #450a0a; color: #f87171; border: 1px solid #ef444455; }
+
+    .actions { display: flex; gap: 8px; }
+    button {
+      flex: 1; padding: 8px 0; border: 1px solid #2c3858; border-radius: 8px;
+      background: #1b2542; color: #e5e7eb; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button:hover { background: #233052; }
+    button.primary { background: linear-gradient(135deg, #4f46e5, #0891b2); border-color: transparent; }
+    button.primary:hover { filter: brightness(1.15); }
+
+    footer { margin-top: 10px; font-size: 10.5px; color: #6b7280; text-align: center; }
+    footer a { color: #9ca3af; }
+    #msg { text-align: center; font-size: 11px; min-height: 15px; color: #fbbf24; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">S</div>
+    <div>
+      <h1>SENTINEL AI Guardian</h1>
+      <div class="sub">Local-first privacy &amp; attachment guard</div>
+    </div>
+  </header>
+
+  <div id="msg"></div>
+
+  <section>
+    <div class="row">
+      <span class="k">Gateway</span>
+      <span class="v" id="gateway">…</span>
+    </div>
+    <div class="row">
+      <span class="k">Connection</span>
+      <span class="v"><span class="dot wait" id="dot"></span><span id="status">checking…</span></span>
+    </div>
+    <div class="row">
+      <span class="k">Pairing</span>
+      <span class="v"><span class="badge off" id="pairing">not set</span></span>
+    </div>
+    <div class="row">
+      <span class="k">Privacy service</span>
+      <span class="v" id="privacy">…</span>
+    </div>
+    <div class="row">
+      <span class="k">ClamAV</span>
+      <span class="v" id="clamav">…</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="shortcut"><span>Blocked / reviewed scans</span><a href="#" id="go-history">Dashboard <span class="open">↗</span></a></div>
+    <div class="shortcut"><span>Gateway / pairing settings</span><a href="#" id="go-options">Options <span class="open">↗</span></a></div>
+    <div class="shortcut"><span>Privacy service health</span><a href="#" id="go-health">Raw JSON <span class="open">↗</span></a></div>
+  </section>
+
+  <section>
+    <div class="shortcut"><span>Hold-before-send on AI chats</span><span class="badge on" id="active-badge">active</span></div>
+    <div class="shortcut"><span>Supported sites</span>
+      <span class="v" style="font-size:11px">ChatGPT · Claude · Gemini</span>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="btn-recheck">Re-check</button>
+    <button id="btn-options" class="primary">Settings</button>
+  </div>
+
+  <footer>Everything stays on this machine — no cloud calls.<br>Sites protected: chatgpt.com, claude.ai, gemini.google.com</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

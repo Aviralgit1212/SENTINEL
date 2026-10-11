@@ -1,4 +1,10 @@
 import app from './app.js'
+import { loadEnvFile } from './envFile.js'
+
+// Load the repo-root .env (SENTINEL_EXTENSION_ORIGIN/TOKEN, ports, limits)
+// before anything reads process.env. Existing environment wins.
+
+loadEnvFile()
 
 // Optional positional argument wins (start-server.sh), then SENTINEL_PORT,
 // then PORT when it looks valid, then the default.

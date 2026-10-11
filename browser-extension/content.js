@@ -42,12 +42,12 @@
       editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
     }
   }
-
   function selectedFiles(button) {
     const form = button?.closest('form');
     const inputs = [...(form || document).querySelectorAll('input[type="file"]')];
     return inputs.flatMap(input => [...(input.files || [])]);
   }
+
   async function inspectFilesAndRelease(button, files) {
     if (busy) return;
     busy = true;
@@ -63,8 +63,11 @@
       status('All selected attachments passed applicable local checks. Review the message and click Send again.');
       for (const file of files) approvedFileKeys.add(`${file.name}:${file.size}:${file.lastModified}`);
       // Require a new user gesture; never auto-submit after scanning attachments.
-    } catch (error) { status(`${String(error?.message || error)} Nothing was sent.`, true); }
-    finally { busy = false; }
+    } catch (error) {
+      status(`${String(error?.message || error)} Nothing was sent.`, true);
+    } finally {
+      busy = false;
+    }
   }
 
   async function inspectAndRelease(button, editor) {
@@ -108,8 +111,7 @@
     void inspectAndRelease(button, editor);
   }, true);
 
-  // Do not let drag-and-drop bypass the selected-file inspection path. This
-  // preview blocks drops and asks the user to choose the file through a picker.
+  // Drag-and-drop bypass protection (kept fail-closed).
   document.addEventListener('drop', (event) => {
     const files = event.dataTransfer?.files;
     if (!files || files.length === 0) return;
@@ -127,6 +129,7 @@
     if (unapprovedFiles.length) { event.preventDefault(); event.stopImmediatePropagation(); void inspectFilesAndRelease(button, unapprovedFiles); return; }
     if (!editor || !readText(editor).trim()) return;
     if (!button) {
+      // No Send button found — inspect against the composer only if there is one; otherwise hold.
       event.preventDefault(); event.stopImmediatePropagation();
       status('Could not identify the send control. Payload remains held.', true);
       return;
@@ -134,5 +137,6 @@
     event.preventDefault(); event.stopImmediatePropagation();
     void inspectAndRelease(button, editor);
   }, true);
+
   status('Local hold-before-send preview active. Selected attachments are scanned fail-closed; verify site behavior before relying on it.');
 })();

@@ -2,6 +2,16 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
+Open Chrome/Brave 
+→
+ Navigate to chrome://extensions.
+Toggle Developer Mode 
+→
+ Click Load Unpacked.
+Select the browser-extension/ directory.
+Copy your Extension Origin (chrome-extension://<id>).
+Set SENTINEL_EXTENSION_ORIGIN and SENTINEL_EXTENSION_TOKEN in .env.
+Open the extension options dialog in your browser, enter http://127.0.0.1:5001 and your token.
 
 import pytesseract
 from PIL import Image, UnidentifiedImageError

@@ -361,7 +361,14 @@ Operates natively in Chromium browsers (Chrome, Brave, Edge), intercepting promp
 3. Select the [`browser-extension/`](file:///home/hdd/hackathons/kiet/sentinel-stage19-full/browser-extension) directory.
 4. Copy your Extension Origin (`chrome-extension://<id>`).
 5. Set `SENTINEL_EXTENSION_ORIGIN` and `SENTINEL_EXTENSION_TOKEN` in `.env`.
-6. Open the extension options dialog in your browser, enter `http://127.0.0.1:5001` and your token.
+6. Click the SENTINEL icon in the extensions toolbar (puzzle icon → pin SENTINEL AI Guardian) — the popup dashboard shows live gateway status, privacy-service and ClamAV state, and one-click shortcuts (Dashboard, Options, raw health JSON).
+7. In the popup (or extensions menu → SENTINEL AI Guardian → Options), enter `http://127.0.0.1:5001` and your pairing token, then Save.
+
+**What the popup page does:** connection dot (green/red), pairing badge, privacy-service and ClamAV capability tiles, shortcuts to the scan dashboard, the options page, and the raw `/api/health` JSON, plus a Re-check button that hits `/api/health` on demand. A background alarm refreshes the cached health state every 15 minutes so the popup reflects reality even before you open it.
+
+**What happens on other sites:** any non-whitelisted page shows a single dismissible notice that hold-before-send protection is not active there (shown once per page via `sessionStorage`; never on localhost/gateway pages).
+
+**Controls supported by the composer guard:** Text sends and Enter are intercepted and inspected locally — `ALLOW` releases, `REDACT` rewrites the composer with redacted text, `BLOCK`/`INCOMPLETE` holds. Attachments are scanned fail-closed before release, and drag-and-drop dropped files are refused so they must pass through the site's picker to be inspected.
 
 ---
 

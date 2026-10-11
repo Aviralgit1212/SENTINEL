@@ -1,9 +1,67 @@
 const MAX_TEXT_CHARS = 200000;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+// Periodic health beacon so the popup banner can show connection status
+// without hammering the gateway on every open.
+const HEALTH_ALARM = 'sentinel-health-beacon';
+const HEALTH_ALARM_MINUTES = 15;
+
+function gatewayUrl(settings) {
+  const gateway = typeof settings.gateway === 'string' && settings.gateway.trim()
+    ? settings.gateway.replace(/\/$/, '')
+    : 'http://127.0.0.1:5001';
+  return gateway;
+}
+
+async function checkGatewayHealth() {
+  const settings = await chrome.storage.local.get(['gateway', 'extensionLinked']);
+  const gateway = gatewayUrl(settings);
+  try {
+    const response = await fetch(`${gateway}/api/health`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    await chrome.storage.local.set({
+      extensionLinked: true,
+      lastHealthAt: Date.now(),
+      lastHealthPrivacy: data.privacyService ?? null,
+      lastHealthClamav: data.clamav ?? null,
+    });
+    return { ok: true, data };
+  } catch (error) {
+    await chrome.storage.local.set({
+      extensionLinked: false,
+      lastHealthAt: Date.now(),
+      lastHealthError: String(error?.message ?? 'unreachable'),
+    });
+    return { ok: false };
+  }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === HEALTH_ALARM) void checkGatewayHealth();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.alarms.create(HEALTH_ALARM, { periodInMinutes: HEALTH_ALARM_MINUTES });
+  void checkGatewayHealth();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create(HEALTH_ALARM, { periodInMinutes: HEALTH_ALARM_MINUTES });
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'SENTINEL_HEALTH_PING') {
+    (async () => {
+      const result = await checkGatewayHealth();
+      sendResponse(result.ok ? { ok: true, data: result.data } : { ok: false });
+    })();
+    return true;
+  }
   if (message?.type !== 'SENTINEL_INSPECT_TEXT' && message?.type !== 'SENTINEL_INSPECT_FILE') return false;
   (async () => {
     const settings = await chrome.storage.local.get(['gateway', 'pairingToken']);
-    const gateway = typeof settings.gateway === 'string' ? settings.gateway.replace(/\/$/, '') : 'http://127.0.0.1:5001';
+    const gateway = gatewayUrl(settings);
     const pairingToken = typeof settings.pairingToken === 'string' ? settings.pairingToken : '';
     if (!pairingToken) throw new Error('SENTINEL pairing token is not configured. Payload remains held.');
     if (message.type === 'SENTINEL_INSPECT_TEXT') {
@@ -18,7 +76,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
     if (message.type === 'SENTINEL_INSPECT_FILE') {
-      if (typeof message.filename !== 'string' || !(message.bytes instanceof ArrayBuffer) || message.bytes.byteLength < 1 || message.bytes.byteLength > 25 * 1024 * 1024) throw new Error('File is missing or exceeds the 25MB browser inspection limit.');
+      if (typeof message.filename !== 'string' || !(message.bytes instanceof ArrayBuffer) || message.bytes.byteLength < 1 || message.bytes.byteLength > MAX_FILE_BYTES) throw new Error('File is missing or exceeds the 25MB browser inspection limit.');
       const form = new FormData();
       form.append('file', new Blob([message.bytes], { type: typeof message.mimeType === 'string' ? message.mimeType : 'application/octet-stream' }), message.filename);
       const response = await fetch(`${gateway}/api/extension/inspect-file`, { method: 'POST', headers: { 'X-Sentinel-Pairing-Token': pairingToken }, body: form, cache: 'no-store' });

@@ -1,1 +1,45 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>SENTINEL AI Guardian Settings</title><style>body{font:15px system-ui;max-width:680px;margin:36px auto;padding:0 18px;color:#111827}label{display:block;margin:18px 0 6px}input{width:100%;padding:10px;box-sizing:border-box}button{margin-top:18px;padding:10px 16px}small{color:#4b5563}</style></head><body><h1>SENTINEL AI Guardian</h1><p>Configure the local SENTINEL gateway. The pairing token is stored in this browser profile and sent only to the configured localhost endpoint.</p><label for="gateway">Gateway URL</label><input id="gateway" value="http://127.0.0.1:5001"><label for="token">Pairing token</label><input id="token" type="password" autocomplete="off"><small>Set the same token in the server's SENTINEL_EXTENSION_TOKEN environment variable and configure the extension origin on the server.</small><br><button id="save">Save settings</button><p id="status" role="status"></p><script src="options.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>SENTINEL AI Guardian Settings</title>
+  <style>
+    body{font:15px system-ui;max-width:680px;margin:36px auto;padding:0 18px;color:#111827}
+    label{display:block;margin:18px 0 6px}
+    input{width:100%;padding:10px;box-sizing:border-box}
+    button{margin-top:18px;padding:10px 16px}
+    small{color:#4b5563}
+    .card{border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-top:22px}
+    .card h2{margin:0 0 8px;font-size:15px}
+    .card p{margin:6px 0;color:#374151;font-size:14px}
+    code{background:#f3f4f6;padding:1px 5px;border-radius:4px}
+    #status{font-weight:600;color:#16a34a}
+  </style>
+</head>
+<body>
+  <h1>SENTINEL AI Guardian</h1>
+  <p>Configure the local SENTINEL gateway. The pairing token is stored in this browser profile and sent only to the configured localhost endpoint.</p>
+
+  <label for="gateway">Gateway URL</label>
+  <input id="gateway" value="http://127.0.0.1:5001">
+
+  <label for="token">Pairing token</label>
+  <input id="token" type="password" autocomplete="off">
+  <small>Set the same token in the server's SENTINEL_EXTENSION_TOKEN environment variable and configure the extension origin on the server. Minimum 32 characters.</small>
+
+  <br>
+  <button id="save">Save settings</button>
+  <p id="status" role="status"></p>
+
+  <div class="card">
+    <h2>How the guard works</h2>
+    <p>• On supported AI chat sites (chatgpt.com, claude.ai, gemini.google.com), clicking Send or pressing Enter is intercepted and your composer text is inspected locally first. Detected sensitive data can be auto-redacted in the composer — you review and re-send.</p>
+    <p>• Attached files are inspected fail-closed: blocked or indeterminate attachments are never submitted; clean ones require one more click of Send.</p>
+    <p>• On all other sites a single notice tells you protection is not active there.</p>
+    <p>• To open this dialog later: extensions menu (puzzle icon) → SENTINEL AI Guardian → ⋮ → <em>Options</em>, or the Settings button in the popup.</p>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
