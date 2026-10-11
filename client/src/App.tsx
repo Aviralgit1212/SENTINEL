@@ -15,7 +15,8 @@ export default function App() {
     <div className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="logo">SENTINEL</span>
+          <span className="logo">S</span>
+          <span className="logo-word">SENTINEL</span>
           <span className="tagline">Sovereign Core v3.0</span>
         </div>
         <nav className="tabs">
