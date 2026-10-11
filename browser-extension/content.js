@@ -138,5 +138,24 @@
     void inspectAndRelease(button, editor);
   }, true);
 
+  // ---------------------------------------------------------------------------
+  // SAFETY NET: form submit interception (capture phase).
+  // Some chat composers (incl. ChatGPT's ProseMirror wrapper) trigger a native
+  // HTMLFormElement submit on Enter that a click-only hook would miss.
+  // ---------------------------------------------------------------------------
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const editor = form.querySelector('textarea, [contenteditable="true"], [role="textbox"]');
+    if (!editor || !readText(editor).trim()) return;
+    const button = form.querySelector(sendSelectors);
+    if (!button) return;
+    if (bypassButton === button) { bypassButton = null; return; }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void inspectAndRelease(button, editor);
+  }, true);
+
   status('Local hold-before-send preview active. Selected attachments are scanned fail-closed; verify site behavior before relying on it.');
 })();
+
