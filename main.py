@@ -86,10 +86,23 @@ def check_health(url: str, timeout: float = 1.0) -> bool:
         return False
 
 
-def start_privacy_service(dev: bool = False) -> subprocess.Popen:
+def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def start_privacy_service(dev: bool = False) -> subprocess.Popen | None:
     python_exe = get_python_exe()
     port = os.environ.get("PRIVACY_PORT", "8000")
     host = os.environ.get("PRIVACY_HOST", "127.0.0.1")
+
+    if is_port_in_use(int(port), host):
+        if check_health(f"http://{host}:{port}/ping"):
+            print(f"[✔] Privacy Shield is already running on http://{host}:{port}. Reusing active instance.")
+            return None
+        print(f"[!] Warning: Port {port} is occupied by an unresponsive process.")
 
     cmd = [
         python_exe,
@@ -112,9 +125,15 @@ def start_privacy_service(dev: bool = False) -> subprocess.Popen:
     return proc
 
 
-def start_server_api(dev: bool = False) -> subprocess.Popen:
+def start_server_api(dev: bool = False) -> subprocess.Popen | None:
     port = os.environ.get("SENTINEL_PORT", "5001")
     host = os.environ.get("HOST", "127.0.0.1")
+
+    if is_port_in_use(int(port), host):
+        if check_health(f"http://{host}:{port}/api/health"):
+            print(f"[✔] Core Security API is already running on http://{host}:{port}. Reusing active instance.")
+            return None
+        print(f"[!] Warning: Port {port} is occupied by an unresponsive process.")
 
     if dev:
         cmd = ["npx", "tsx", "src/server.ts", port]
@@ -134,7 +153,11 @@ def start_server_api(dev: bool = False) -> subprocess.Popen:
     return proc
 
 
-def start_client_ui() -> subprocess.Popen:
+def start_client_ui() -> subprocess.Popen | None:
+    if is_port_in_use(5173, "127.0.0.1"):
+        print("[✔] Client UI is already running on http://localhost:5173. Reusing active instance.")
+        return None
+
     print("[sentinel-supervisor] Starting React + Vite UI on http://localhost:5173...")
     cmd = ["npm", "run", "dev"]
     proc = subprocess.Popen(cmd, cwd=str(CLIENT_DIR), env=os.environ.copy())
@@ -245,9 +268,13 @@ def main():
     try:
         while True:
             time.sleep(1)
-            for proc in CHILD_PROCESSES:
-                if proc.poll() is not None:
-                    print(f"[!] Warning: Supervised process (PID {proc.pid}) exited unexpectedly.")
+            for proc in list(CHILD_PROCESSES):
+                if proc is not None and proc.poll() is not None:
+                    exit_code = proc.poll()
+                    print(f"\n[!] Supervised process (PID {proc.pid}) exited with code {exit_code}.")
+                    print("[sentinel-supervisor] Shutting down remaining services...")
+                    signal_handler(signal.SIGTERM, None)
+                    return
     except KeyboardInterrupt:
         signal_handler(signal.SIGINT, None)
 
