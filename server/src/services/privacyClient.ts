@@ -1,7 +1,7 @@
 import { verifyRedactionPayload } from './redactionIntegrity.js'
 import type { PrivacyResult, AnalyzerState } from '../types.js'
 
-const PRIVACY_SERVICE_URL = process.env.PRIVACY_SERVICE_URL ?? 'http://127.0.0.1:8100'
+const PRIVACY_SERVICE_URL = process.env.PRIVACY_SERVICE_URL ?? 'http://127.0.0.1:8000'
 const TIMEOUT_MS = 120_000
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {

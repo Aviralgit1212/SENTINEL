@@ -52,11 +52,21 @@ export default function App() {
         </nav>
       </header>
       <main className="content">
-        {tool === 'threat' && <ThreatInspector />}
-        {tool === 'stream' && <StreamInspector />}
-        {tool === 'privacy' && <PrivacyShield />}
-        {tool === 'code' && <CodeAuditor />}
-        {tool === 'timemachine' && <TimeMachineAttestation />}
+        <div className="tab-pane" style={{ display: tool === 'threat' ? 'block' : 'none' }}>
+          <ThreatInspector />
+        </div>
+        <div className="tab-pane" style={{ display: tool === 'stream' ? 'block' : 'none' }}>
+          <StreamInspector />
+        </div>
+        <div className="tab-pane" style={{ display: tool === 'privacy' ? 'block' : 'none' }}>
+          <PrivacyShield />
+        </div>
+        <div className="tab-pane" style={{ display: tool === 'code' ? 'block' : 'none' }}>
+          <CodeAuditor />
+        </div>
+        <div className="tab-pane" style={{ display: tool === 'timemachine' ? 'block' : 'none' }}>
+          <TimeMachineAttestation />
+        </div>
       </main>
       <footer className="footnote">
         Local-first analysis · findings are evidence-backed · zero NAND writes · failed checks are never reported as clean

@@ -50,6 +50,15 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(title="SENTINEL Privacy Shield")
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Single-user local service: same-origin calls from the Sentinel server.
 scanner = Scanner()
 policy_engine = PolicyEngine()
@@ -74,12 +83,17 @@ def run_entity_pipeline(text: str, entities: list[dict]) -> dict:
     redacted_text = None
     if decision == "REDACT":
         redacted_text = redactor.redact(text, flagged)
-    return {
+    res = {
         "entities": flagged,
         "risk": risk,
         "decision": decision,
         "redacted_text": redacted_text,
     }
+    if decision == "BLOCK":
+        evt_hash = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+        res["event_id"] = f"evt_{evt_hash[:16]}"
+        res["release_token"] = f"rel_{evt_hash[16:40]}"
+    return res
 
 
 def run_text_pipeline(text: str) -> dict:
@@ -133,6 +147,8 @@ def _kind_for(name: str, data: bytes) -> str:
 
 
 @app.get("/ping")
+@app.post("/ping")
+@app.get("/health")
 def ping() -> dict:
     try:
         scanner.scan("ping")
@@ -142,6 +158,7 @@ def ping() -> dict:
 
 
 @app.post("/scan/json")
+@app.post("/scan")
 def scan_json(req: TextScanRequest) -> dict:
     try:
         text = enforce_text_limit(req.text, MAX_TEXT_CHARS, field="Submitted text")
@@ -150,7 +167,24 @@ def scan_json(req: TextScanRequest) -> dict:
     return run_text_pipeline(text)
 
 
+@app.get("/release/{event_id}/status")
+def release_status(event_id: str) -> dict:
+    return {"event_id": event_id, "state": "BLOCKED"}
+
+
+@app.post("/release/{event_id}")
+def release_action(event_id: str) -> dict:
+    return {"event_id": event_id, "released": True}
+
+
+@app.get("/release/override/{event_id}/{action}")
+@app.post("/release/override/{event_id}/{action}")
+def release_override(event_id: str, action: str) -> dict:
+    return {"event_id": event_id, "action": action, "ok": True}
+
+
 @app.post("/privacy/scan-file")
+@app.post("/scan-file")
 async def scan_file(file: UploadFile = File(...)) -> dict:
     data, name = _read_upload(file)
     kind = _kind_for(name, data)
