@@ -23,7 +23,18 @@ export function analyzerScriptDir(): string {
 }
 
 function resolvePython(): string {
-  if (process.env.PYTHON_EXECUTABLE) return process.env.PYTHON_EXECUTABLE
+  if (process.env.PYTHON_EXECUTABLE) {
+    // PYTHON_EXECUTABLE may be configured repo-relative (e.g. '.venv/bin/python').
+    // The analyzer spawn uses cwd=python-analyzers/, so a relative value would
+    // attempt to execute python-analyzers/.venv/bin/python and fail with ENOENT.
+    // Resolve relative values against the project root once, here.
+    const configured = process.env.PYTHON_EXECUTABLE
+    if (path.isAbsolute(configured)) return configured
+    const projectRootForEnv = path.resolve(analyzerScriptDir(), '..')
+    const absolute = path.resolve(projectRootForEnv, configured)
+    if (fs.existsSync(absolute)) return absolute
+    return configured
+  }
 
   const isWin = process.platform === 'win32'
   const projectRoot = path.resolve(analyzerScriptDir(), '..')
